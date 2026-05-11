@@ -75,5 +75,8 @@ export default defineConfig(async ({ mode }) => {
 				],
 			},
 		},
+		worker: {
+			format: 'es',
+		},
 	} as UserConfig;
 });

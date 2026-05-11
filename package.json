@@ -54,6 +54,7 @@
 	"dependencies": {
 		"@codemirror/legacy-modes": "^6.5.2",
 		"@lemons_dev/parsinom": "^0.2.1",
+		"ses": "^2.0.0",
 		"zod": "^4.3.6"
 	},
 	"trustedDependencies": [
