@@ -20,6 +20,12 @@ async function renderSafeJsBlock(
 ): Promise<void> {
 	element.empty();
 	const outputElement = element.createEl('pre');
+
+	if (debug && !plugin.settings.debugBlocksEnabled) {
+		outputElement.setText('Debug blocks are disabled in settings.');
+		return;
+	}
+
 	outputElement.setText('Running safe js...');
 
 	const result = await plugin.api.execute(source, {

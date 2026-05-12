@@ -14,6 +14,9 @@ export interface PermissionApprovalStore {
 export interface StorageLike {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
+	removeItem?(key: string): void;
+	key?(index: number): string | null;
+	readonly length?: number;
 }
 
 const STORAGE_PREFIX = 'safe-js:permissions:v1:';
@@ -61,6 +64,68 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 			}),
 		);
 	}
+
+	list(): PermissionApproval[] {
+		return this.getApprovalKeys()
+			.map(key => this.load(key.slice(STORAGE_PREFIX.length)))
+			.filter((approval): approval is PermissionApproval => approval !== null)
+			.sort((left, right) => right.updatedAt - left.updatedAt);
+	}
+
+	delete(codeHash: string): boolean {
+		const key = `${STORAGE_PREFIX}${codeHash}`;
+		if (this.storage.getItem(key) === null) {
+			return false;
+		}
+
+		if (this.storage.removeItem !== undefined) {
+			this.storage.removeItem(key);
+		} else {
+			this.storage.setItem(key, '');
+		}
+
+		return true;
+	}
+
+	deleteOlderThan(cutoffTime: number): number {
+		let deletedCount = 0;
+
+		for (const approval of this.list()) {
+			if (approval.updatedAt < cutoffTime && this.delete(approval.codeHash)) {
+				deletedCount += 1;
+			}
+		}
+
+		return deletedCount;
+	}
+
+	deleteAll(): number {
+		let deletedCount = 0;
+
+		for (const approval of this.list()) {
+			if (this.delete(approval.codeHash)) {
+				deletedCount += 1;
+			}
+		}
+
+		return deletedCount;
+	}
+
+	private getApprovalKeys(): string[] {
+		if (this.storage.key === undefined || typeof this.storage.length !== 'number') {
+			return [];
+		}
+
+		const keys: string[] = [];
+		for (let index = 0; index < this.storage.length; index += 1) {
+			const key = this.storage.key(index);
+			if (key?.startsWith(STORAGE_PREFIX) === true) {
+				keys.push(key);
+			}
+		}
+
+		return keys;
+	}
 }
 
 export class MemoryPermissionApprovalStore implements PermissionApprovalStore {
@@ -76,5 +141,31 @@ export class MemoryPermissionApprovalStore implements PermissionApprovalStore {
 			permissions: normalizePermissions(approval.permissions),
 			updatedAt: approval.updatedAt,
 		});
+	}
+
+	list(): PermissionApproval[] {
+		return [...this.approvals.values()].sort((left, right) => right.updatedAt - left.updatedAt);
+	}
+
+	delete(codeHash: string): boolean {
+		return this.approvals.delete(codeHash);
+	}
+
+	deleteOlderThan(cutoffTime: number): number {
+		let deletedCount = 0;
+
+		for (const approval of this.list()) {
+			if (approval.updatedAt < cutoffTime && this.delete(approval.codeHash)) {
+				deletedCount += 1;
+			}
+		}
+
+		return deletedCount;
+	}
+
+	deleteAll(): number {
+		const deletedCount = this.approvals.size;
+		this.approvals.clear();
+		return deletedCount;
 	}
 }

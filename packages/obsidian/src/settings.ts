@@ -1,6 +1,10 @@
 import type { App } from 'obsidian';
-import { PluginSettingTab, Setting } from 'obsidian';
+import { Notice, PluginSettingTab, Setting } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
+import type { PermissionApproval } from 'packages/obsidian/src/permissions/approval-store';
+import { LocalStoragePermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
+import type { ScriptStorageEntry } from 'packages/obsidian/src/storage/script-storage';
+import { ScriptStorageManager } from 'packages/obsidian/src/storage/script-storage';
 
 export interface SafeJsSettings {
 	executionTimeoutMs: number;
@@ -14,6 +18,8 @@ export const DEFAULT_SETTINGS: SafeJsSettings = {
 
 export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
+	private readonly approvalStore = new LocalStoragePermissionApprovalStore();
+	private readonly staleEntryAgeMs = 30 * 24 * 60 * 60 * 1000;
 
 	constructor(app: App, plugin: SafeJsPlugin) {
 		super(app, plugin);
@@ -49,5 +55,115 @@ export class SafeJsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}),
 			);
+
+		this.renderApprovalStorage(containerEl);
+		this.renderScriptStorage(containerEl);
 	}
+
+	private renderApprovalStorage(containerEl: HTMLElement): void {
+		const approvals = this.approvalStore.list();
+		const section = containerEl.createEl('section');
+		new Setting(section).setName('Approved script hashes').setHeading();
+		section.createEl('p', {
+			text: `${approvals.length} approved script ${approvals.length === 1 ? 'hash' : 'hashes'} are stored on this device.`,
+		});
+
+		new Setting(section)
+			.setName('Clear approved hashes')
+			.setDesc('Remove remembered permission approvals for changed or old scripts.')
+			.addButton(button =>
+				button.setButtonText('Clear older than 30 days').onClick(() => {
+					const deletedCount = this.approvalStore.deleteOlderThan(Date.now() - this.staleEntryAgeMs);
+					new Notice(`Cleared ${deletedCount} approved script ${deletedCount === 1 ? 'hash' : 'hashes'}.`);
+					this.display();
+				}),
+			)
+			.addButton(button =>
+				button.setButtonText('Clear all').onClick(() => {
+					const deletedCount = this.approvalStore.deleteAll();
+					new Notice(`Cleared ${deletedCount} approved script ${deletedCount === 1 ? 'hash' : 'hashes'}.`);
+					this.display();
+				}),
+			);
+
+		this.renderApprovalList(section, approvals);
+	}
+
+	private renderApprovalList(section: HTMLElement, approvals: PermissionApproval[]): void {
+		if (approvals.length === 0) {
+			section.createEl('p', { text: 'No approved script hashes are stored.' });
+			return;
+		}
+
+		const list = section.createEl('ul');
+		for (const approval of approvals.slice(0, 20)) {
+			const item = list.createEl('li');
+			item.createEl('code', { text: approval.codeHash });
+			item.createSpan({ text: ` - ${approval.permissions.join(', ')} - ${formatDate(approval.updatedAt)}` });
+		}
+
+		if (approvals.length > 20) {
+			section.createEl('p', { text: `${approvals.length - 20} more approved hashes are hidden.` });
+		}
+	}
+
+	private renderScriptStorage(containerEl: HTMLElement): void {
+		const storageManager = new ScriptStorageManager(this.app);
+		const entries = storageManager.list();
+		const section = containerEl.createEl('section');
+		new Setting(section).setName('Script storage').setHeading();
+		section.createEl('p', {
+			text: `${entries.length} Safe JS storage ${entries.length === 1 ? 'key is' : 'keys are'} indexed on this device.`,
+		});
+
+		new Setting(section)
+			.setName('Clear script storage')
+			.setDesc('Remove data written through the storage API by scripts.')
+			.addButton(button =>
+				button.setButtonText('Clear older than 30 days').onClick(() => {
+					const deletedCount = storageManager.deleteOlderThan(Date.now() - this.staleEntryAgeMs);
+					new Notice(`Cleared ${deletedCount} script storage ${deletedCount === 1 ? 'key' : 'keys'}.`);
+					this.display();
+				}),
+			)
+			.addButton(button =>
+				button.setButtonText('Clear all').onClick(() => {
+					const deletedCount = storageManager.deleteAll();
+					new Notice(`Cleared ${deletedCount} script storage ${deletedCount === 1 ? 'key' : 'keys'}.`);
+					this.display();
+				}),
+			);
+
+		this.renderScriptStorageList(section, entries);
+	}
+
+	private renderScriptStorageList(section: HTMLElement, entries: ScriptStorageEntry[]): void {
+		if (entries.length === 0) {
+			section.createEl('p', { text: 'No indexed script storage keys are stored.' });
+			return;
+		}
+
+		const list = section.createEl('ul');
+		for (const entry of entries.slice(0, 20)) {
+			const item = list.createEl('li');
+			item.createEl('code', { text: entry.key });
+			item.createSpan({ text: ` - ${formatBytes(entry.sizeBytes)} - ${formatDate(entry.updatedAt)}` });
+		}
+
+		if (entries.length > 20) {
+			section.createEl('p', { text: `${entries.length - 20} more storage keys are hidden.` });
+		}
+	}
+}
+
+function formatDate(timestamp: number): string {
+	return new Date(timestamp).toLocaleString();
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) {
+		return `${bytes} B`;
+	}
+
+	return `${(bytes / 1024).toFixed(1)} KB`;
 }

@@ -8,12 +8,14 @@ function createTestRegistry(): RpcRegistry {
 			method: 'test:echo',
 			permission: 'test:call',
 			description: 'Echo a test value.',
+			usage: 'api.test.echo(value)',
 			requestSchema: z.object({ value: z.string() }),
 			responseSchema: z.object({ value: z.string() }),
 			binding: {
 				namespace: 'test',
 				functionName: 'echo',
 				paramStyle: 'object',
+				argNames: ['value'],
 			},
 			handler: params => params,
 		},
@@ -55,4 +57,52 @@ test('rejects malformed RPC requests', async () => {
 	if (!result.ok) {
 		expect(result.error.code).toBe('invalid-rpc-request');
 	}
+});
+
+test('exposes worker bindings with argument metadata', () => {
+	expect(createTestRegistry().getWorkerBindings()).toEqual([
+		{
+			method: 'test:echo',
+			permission: 'test:call',
+			namespace: 'test',
+			functionName: 'echo',
+			paramStyle: 'object',
+			argNames: ['value'],
+		},
+	]);
+});
+
+test('generates docs from registered permission and method definitions', () => {
+	const registry = new RpcRegistry(
+		[
+			{
+				method: 'test:echo',
+				permission: 'test:call',
+				description: 'Echo a test value.',
+				usage: 'api.test.echo({ value })',
+				requestSchema: z.object({ value: z.string() }),
+				responseSchema: z.object({ value: z.string() }),
+				binding: {
+					namespace: 'test',
+					functionName: 'echo',
+					paramStyle: 'object',
+				},
+				handler: params => params,
+			},
+		],
+		[
+			{
+				id: 'test:call',
+				name: 'Test calls',
+				description: 'Run test calls.',
+				severity: 'low',
+				grantGuidance: 'Grant in tests.',
+			},
+		],
+	);
+	const docs = registry.getDocs();
+
+	expect(docs).toHaveLength(1);
+	expect(docs[0]?.permission.id).toBe('test:call');
+	expect(docs[0]?.methods[0]?.usage).toBe('api.test.echo({ value })');
 });

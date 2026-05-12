@@ -101,6 +101,7 @@ function createRegistry(): RpcRegistry {
 			method: 'test:echo',
 			permission: 'test:call',
 			description: 'Echo a test value.',
+			usage: 'api.test.echo({ value })',
 			requestSchema: z.object({ value: z.string() }),
 			responseSchema: z.object({ value: z.string() }),
 			binding: {

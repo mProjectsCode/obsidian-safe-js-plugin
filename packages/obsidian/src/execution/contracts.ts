@@ -17,7 +17,8 @@ export const workerRpcBindingSchema = z.object({
 	namespace: z.string().min(1),
 	functionName: z.string().min(1),
 	permission: permissionSchema,
-	paramStyle: z.enum(['object', 'path', 'optionalPath']),
+	paramStyle: z.enum(['object', 'path', 'optionalPath', 'args']),
+	argNames: z.array(z.string().min(1)).optional(),
 });
 
 export type WorkerRpcBinding = z.infer<typeof workerRpcBindingSchema>;

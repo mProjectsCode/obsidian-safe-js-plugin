@@ -63,12 +63,14 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 ## Agent do/don't
 
 **Do**
+
 - Add commands with stable IDs (don't rename once released).
 - Provide defaults and validation in settings.
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
 
 **Don't**
+
 - Introduce network calls without an obvious user-facing reason and documentation.
 - Ship features that require cloud services without clear disclosure and explicit opt-in.
 - Store or transmit vault contents unless essential and consented.

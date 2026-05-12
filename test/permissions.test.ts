@@ -57,3 +57,33 @@ test('stores approvals in localStorage-compatible storage keyed by code hash', (
 	expect(store.load('hash-b')).toBeNull();
 	expect([...values.keys()]).toEqual(['safe-js:permissions:v1:hash-a']);
 });
+
+test('lists and prunes stored permission approvals', () => {
+	const values = new Map<string, string>();
+	const storage = {
+		get length(): number {
+			return values.size;
+		},
+		getItem(key: string): string | null {
+			return values.get(key) ?? null;
+		},
+		key(index: number): string | null {
+			return [...values.keys()][index] ?? null;
+		},
+		removeItem(key: string): void {
+			values.delete(key);
+		},
+		setItem(key: string, value: string): void {
+			values.set(key, value);
+		},
+	};
+	const store = new LocalStoragePermissionApprovalStore(storage);
+
+	store.save({ codeHash: 'old-hash', permissions: ['vault:read'], updatedAt: 10 });
+	store.save({ codeHash: 'new-hash', permissions: ['storage:read'], updatedAt: 100 });
+
+	expect(store.list().map(approval => approval.codeHash)).toEqual(['new-hash', 'old-hash']);
+	expect(store.deleteOlderThan(50)).toBe(1);
+	expect(store.load('old-hash')).toBeNull();
+	expect(store.load('new-hash')?.permissions).toEqual(['storage:read']);
+});

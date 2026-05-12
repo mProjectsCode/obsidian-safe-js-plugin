@@ -1,9 +1,11 @@
-"use strict";
-/* global Compartment, harden, lockdown */
+'use strict';
+/* eslint-disable obsidianmd/rule-custom-message -- Safe JS intentionally exposes local worker console methods. */
 
-import 'ses';
+// eslint-disable-next-line import/order -- SES lockdown must run before the worker's other runtime dependencies.
+import { SesCompartment, sesHarden } from 'packages/obsidian/src/worker/ses-runtime';
 import type { ExecuteWorkerMessage, HostRpcResponseMessage, JsonValue, WorkerRpcBinding } from 'packages/obsidian/src/execution/contracts';
 import { executeWorkerMessageSchema, hostRpcResponseMessageSchema } from 'packages/obsidian/src/execution/contracts';
+import { SANDBOX_GLOBALS } from 'packages/obsidian/src/execution/sandbox-globals';
 
 interface PendingRpc {
 	resolve(value: JsonValue): void;
@@ -13,8 +15,13 @@ interface PendingRpc {
 type WorkerApi = Record<string, Record<string, (...args: unknown[]) => Promise<JsonValue>>>;
 
 const pendingRpcRequests = new Map<string, PendingRpc>();
-
-lockdown();
+const safeConsole = sesHarden({
+	debug: console.debug.bind(console),
+	error: console.error.bind(console),
+	info: console.info.bind(console),
+	log: console.log.bind(console),
+	warn: console.warn.bind(console),
+});
 
 function nextRpcRequestId(): string {
 	return crypto.randomUUID();
@@ -25,6 +32,10 @@ function postMessageToHost(message: unknown): void {
 }
 
 function normalizeParams(binding: WorkerRpcBinding, args: unknown[]): JsonValue {
+	if (binding.paramStyle === 'args') {
+		return normalizeNamedArgs(binding, args);
+	}
+
 	if (binding.paramStyle === 'path') {
 		return {
 			path: readPathArgument(args[0] ?? ''),
@@ -43,6 +54,19 @@ function normalizeParams(binding: WorkerRpcBinding, args: unknown[]): JsonValue 
 
 	const params = args[0] ?? {};
 	return isJsonValue(params) ? params : {};
+}
+
+function normalizeNamedArgs(binding: WorkerRpcBinding, args: unknown[]): JsonValue {
+	const argNames = binding.argNames ?? [];
+	const params: Record<string, JsonValue> = {};
+	for (const [index, name] of argNames.entries()) {
+		const value = args[index];
+		if (value !== undefined) {
+			params[name] = isJsonValue(value) ? value : null;
+		}
+	}
+
+	return params;
 }
 
 function createApi(executionId: string, bindings: readonly WorkerRpcBinding[]): WorkerApi {
@@ -66,15 +90,18 @@ function createApi(executionId: string, bindings: readonly WorkerRpcBinding[]): 
 		};
 	}
 
-	return harden(api);
+	return sesHarden(api);
 }
 
 async function executeUserCode(message: ExecuteWorkerMessage): Promise<void> {
 	const api = createApi(message.executionId, message.rpcBindings);
 
 	try {
-		const compartment = new Compartment({
-			globals: harden({ api }),
+		const compartment = new SesCompartment({
+			globals: sesHarden({
+				api,
+				console: safeConsole,
+			}),
 			__options__: true,
 		});
 		const rawValue = (await compartment.evaluate(`"use strict";
@@ -171,7 +198,7 @@ self.addEventListener('message', event => {
 		ok: false,
 		error: {
 			name: 'ValidationError',
-			message: 'Worker received an invalid host message.',
+			message: `Worker received an invalid host message. Sandbox globals: ${SANDBOX_GLOBALS.map(global => global.name).join(', ')}.`,
 		},
 	});
 });

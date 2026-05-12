@@ -18,7 +18,7 @@ export default defineConfig(
 			...tseslint.configs.recommended,
 			...tseslint.configs.recommendedTypeChecked,
 			...tseslint.configs.stylisticTypeChecked,
-			...obsidianmd.configs.recommended
+			...obsidianmd.configs.recommended,
 		],
 		languageOptions: {
 			parser: tseslint.parser,
