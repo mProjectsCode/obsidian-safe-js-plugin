@@ -17,9 +17,7 @@ const pendingRpcRequests = new Map<string, PendingRpc>();
 const safeConsole = sesHarden({
 	debug: console.debug.bind(console),
 	error: console.error.bind(console),
-	// eslint-disable-next-line obsidianmd/rule-custom-message -- We don't use these methods, we just expose them to the sandboxed code.
 	info: console.info.bind(console),
-	// eslint-disable-next-line obsidianmd/rule-custom-message -- We don't use these methods, we just expose them to the sandboxed code.
 	log: console.log.bind(console),
 	warn: console.warn.bind(console),
 });

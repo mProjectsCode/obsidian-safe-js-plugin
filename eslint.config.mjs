@@ -63,6 +63,7 @@ export default defineConfig(
 			'@typescript-eslint/prefer-promise-reject-errors': 'off',
 
 			'obsidianmd/prefer-file-manager-trash-file': 'off',
+			'obsidianmd/rule-custom-message': 'off',
 		},
 	},
 );
