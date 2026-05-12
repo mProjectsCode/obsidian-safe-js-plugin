@@ -57,14 +57,14 @@ export class SafeJsExecutionService {
 				return;
 			}
 
-			activeWindow.clearTimeout(timeoutId);
+			window.clearTimeout(timeoutId);
 		};
 		this.setExecutionTimeout = (callback: () => void, timeoutMs: number): number => {
 			if (dependencies.setExecutionTimeout !== undefined) {
 				return dependencies.setExecutionTimeout(callback, timeoutMs);
 			}
 
-			return activeWindow.setTimeout(callback, timeoutMs);
+			return window.setTimeout(callback, timeoutMs);
 		};
 		this.workerFactory = dependencies.workerFactory;
 	}

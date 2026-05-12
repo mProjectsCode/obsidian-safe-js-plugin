@@ -9,7 +9,7 @@ export function createVaultDeleteMethods(app: App): RpcMethodDefinition[] {
 		method({
 			method: 'vault:trash',
 			permission: 'vault:delete',
-			description: 'Move a vault file or folder to trash.',
+			description: 'Move a vault file or folder to system trash.',
 			usage: 'api.vault.trash(path, system)',
 			namespace: 'vault',
 			functionName: 'trash',
@@ -17,7 +17,6 @@ export function createVaultDeleteMethods(app: App): RpcMethodDefinition[] {
 			requestSchema: z.object({ path: z.string(), system: z.boolean() }),
 			responseSchema: okResponseSchema,
 			async handler(params) {
-				// eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- This RPC explicitly mirrors Vault.trash.
 				await app.vault.trash(requireAbstractFile(app, params.path), params.system);
 				return ok();
 			},
@@ -33,7 +32,6 @@ export function createVaultDeleteMethods(app: App): RpcMethodDefinition[] {
 			requestSchema: z.object({ path: z.string(), options: z.object({ force: z.boolean().optional() }).optional() }),
 			responseSchema: okResponseSchema,
 			async handler(params) {
-				// eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- This RPC explicitly mirrors Vault.delete.
 				await app.vault.delete(requireAbstractFile(app, params.path), params.options?.force);
 				return ok();
 			},
@@ -41,7 +39,7 @@ export function createVaultDeleteMethods(app: App): RpcMethodDefinition[] {
 		method({
 			method: 'fileManager:trashFile',
 			permission: 'vault:delete',
-			description: 'Trash a vault file or folder using Obsidian file-manager behavior.',
+			description: 'Trash a vault file or folder respecting the users "trash" settings.',
 			usage: 'api.fileManager.trashFile(path)',
 			namespace: 'fileManager',
 			functionName: 'trashFile',

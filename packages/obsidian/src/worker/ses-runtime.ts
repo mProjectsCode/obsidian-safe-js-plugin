@@ -1,4 +1,4 @@
-/* global Compartment, harden, lockdown */
+/* global Compartment, harden, lockdown -- Somehow eslint does not know the globals created by the ses import exist. */
 
 import 'ses';
 import type { Harden } from 'ses';

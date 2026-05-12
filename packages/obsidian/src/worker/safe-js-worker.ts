@@ -1,5 +1,4 @@
 'use strict';
-/* eslint-disable obsidianmd/rule-custom-message -- Safe JS intentionally exposes local worker console methods. */
 
 // eslint-disable-next-line import/order -- SES lockdown must run before the worker's other runtime dependencies.
 import { SesCompartment, sesHarden } from 'packages/obsidian/src/worker/ses-runtime';
@@ -18,7 +17,9 @@ const pendingRpcRequests = new Map<string, PendingRpc>();
 const safeConsole = sesHarden({
 	debug: console.debug.bind(console),
 	error: console.error.bind(console),
+	// eslint-disable-next-line obsidianmd/rule-custom-message -- We don't use these methods, we just expose them to the sandboxed code.
 	info: console.info.bind(console),
+	// eslint-disable-next-line obsidianmd/rule-custom-message -- We don't use these methods, we just expose them to the sandboxed code.
 	log: console.log.bind(console),
 	warn: console.warn.bind(console),
 });

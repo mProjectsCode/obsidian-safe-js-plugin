@@ -61,6 +61,8 @@ export default defineConfig(
 			'@typescript-eslint/explicit-function-return-type': ['warn'],
 			'@typescript-eslint/require-await': 'off',
 			'@typescript-eslint/prefer-promise-reject-errors': 'off',
+
+			'obsidianmd/prefer-file-manager-trash-file': 'off',
 		},
 	},
 );
