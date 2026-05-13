@@ -14,6 +14,7 @@ This is a planning checklist for the host methods that Safe JS should mirror. Ke
 - Do not mirror Obsidian methods that require host callbacks, such as `Vault.process` or `FileManager.processFrontMatter`, by evaluating worker-supplied functions on the host.
 - Event subscriptions are deferred until there is a lifecycle design for unsubscribe, plugin unload cleanup, and backpressure.
 - If `network:request` is ever combined with vault or editor read permissions, the approval UI and docs must clearly warn that script output can leave the device.
+- [ ] Run a focused permission audit before expanding the RPC surface, especially for network requests, vault writes/deletes, editor writes, workspace navigation, and storage scope boundaries.
 
 ## `core:read`
 
@@ -249,39 +250,48 @@ Implementation guardrail:
 
 ## `storage:read`
 
-Read Safe JS plugin-scoped storage only. Do not expose arbitrary vault localStorage keys. Do NOT expose the permission storage.
+Read Safe JS storage scoped to the script source hash only. Do not expose arbitrary vault localStorage keys. Do NOT expose the permission storage.
 
-- [x] `api.storage.get(key)` mirrors a Safe JS-owned wrapper over `app.loadLocalStorage(...)`.
+- [x] `api.storage.get(key)` mirrors a Safe JS-owned source-scoped wrapper over `app.loadLocalStorage(...)`.
 
 ## `storage:write`
 
-Write Safe JS plugin-scoped storage only.
+Write Safe JS storage scoped to the script source hash only.
 
-- [x] `api.storage.set(key, value)` mirrors a Safe JS-owned wrapper over `app.saveLocalStorage(...)`.
-- [x] `api.storage.delete(key)` mirrors `app.saveLocalStorage(key, null)` through a Safe JS-owned wrapper.
+- [x] `api.storage.set(key, value)` mirrors a Safe JS-owned source-scoped wrapper over `app.saveLocalStorage(...)`.
+- [x] `api.storage.delete(key)` mirrors `app.saveLocalStorage(key, null)` through a Safe JS-owned source-scoped wrapper.
+
+## `storage:global-read`
+
+Read Safe JS storage shared across approved scripts on this device.
+
+- [x] `api.globalStorage.get(key)` mirrors a Safe JS-owned global wrapper over `app.loadLocalStorage(...)`.
+
+## `storage:global-write`
+
+Write Safe JS storage shared across approved scripts on this device.
+
+- [x] `api.globalStorage.set(key, value)` mirrors a Safe JS-owned global wrapper over `app.saveLocalStorage(...)`.
+- [x] `api.globalStorage.delete(key)` mirrors `app.saveLocalStorage(key, null)` through a Safe JS-owned global wrapper.
 
 Implementation guardrail:
 
 - [x] Prefix all keys with a Safe JS namespace and validate key length and value size.
 - [x] Do not expose raw `app.loadLocalStorage` or `app.saveLocalStorage`.
 
-## Pure worker helpers
+## Helper methods
 
-These can be implemented inside the worker without host RPC or permissions. They are not exposed yet; this iteration focused on host RPC permissions, generated docs, and sandbox globals.
+These mirror pure Obsidian helper functions through normal permission-gated RPC methods.
 
-- [ ] `api.path.normalize(path)` mirrors `normalizePath(path)`.
-- [ ] `api.link.parseLinktext(linktext)` mirrors `parseLinktext(linktext)`.
-- [ ] `api.link.getLinkpath(linktext)` mirrors `getLinkpath(linktext)`.
-- [ ] `api.search.prepareSimpleSearch(query, text)` mirrors `prepareSimpleSearch(query)(text)`.
-- [ ] `api.search.prepareFuzzySearch(query, text)` mirrors `prepareFuzzySearch(query)(text)`.
-- [ ] `api.yaml.parse(yaml)` mirrors `parseYaml(yaml)`.
-- [ ] `api.yaml.stringify(value)` mirrors `stringifyYaml(value)`.
+- [x] `api.path.normalize(path)` mirrors `normalizePath(path)`.
+- [x] `api.link.parseLinktext(linktext)` mirrors `parseLinktext(linktext)`.
+- [x] `api.link.getLinkpath(linktext)` mirrors `getLinkpath(linktext)`.
+- [x] `api.search.prepareSimpleSearch(query, text)` mirrors `prepareSimpleSearch(query)(text)`.
+- [x] `api.search.prepareFuzzySearch(query, text)` mirrors `prepareFuzzySearch(query)(text)`.
+- [x] `api.yaml.parse(yaml)` mirrors `parseYaml(yaml)`.
+- [x] `api.yaml.stringify(value)` mirrors `stringifyYaml(value)`.
 - [ ] `api.html.toMarkdown(html)` mirrors `htmlToMarkdown(html)` if it can run without DOM leakage.
 - [ ] `api.html.sanitize(html)` mirrors `sanitizeHTMLToDom(html)` only if returning sanitized HTML text, not DOM nodes.
-- [ ] `api.binary.arrayBufferToBase64(buffer)` mirrors `arrayBufferToBase64(buffer)`.
-- [ ] `api.binary.base64ToArrayBuffer(base64)` mirrors `base64ToArrayBuffer(base64)`.
-- [ ] `api.binary.arrayBufferToHex(buffer)` mirrors `arrayBufferToHex(buffer)`.
-- [ ] `api.binary.hexToArrayBuffer(hex)` mirrors `hexToArrayBuffer(hex)`.
 
 ## Explicitly out of scope
 

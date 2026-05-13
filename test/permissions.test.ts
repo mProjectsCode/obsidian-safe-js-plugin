@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { LocalStoragePermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
-import { assertKnownPermissions, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
+import { LocalStoragePermissionApprovalStore, LocalStoragePermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
+import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
 
 test('parses contiguous leading permission comments', () => {
 	const parsed = parseLeadingPermissions(`// @permission vault:read
@@ -10,6 +10,10 @@ return await api.vault.read("Daily.md");`);
 
 	expect(parsed.permissions).toEqual(['vault:read']);
 	expect(parsed.bodyStartsAtLine).toBe(4);
+});
+
+test('parses permission group comments', () => {
+	expect(parseLeadingPermissions('// @permission vault:*').permissions).toEqual(['vault:*']);
 });
 
 test('rejects malformed permission comments', () => {
@@ -34,6 +38,11 @@ test('rejects unknown permissions against the registry permission set', () => {
 	expect(() => assertKnownPermissions(['vault:write'], new Set(['vault:read']))).toThrow("Unknown permission 'vault:write'");
 });
 
+test('expands permission groups against known permissions', () => {
+	expect(expandPermissionGroups(['vault:*'], new Set(['vault:read', 'vault:modify', 'ui:notify']))).toEqual(['vault:modify', 'vault:read']);
+	expect(() => expandPermissionGroups(['network:*'], new Set(['vault:read']))).toThrow("Unknown permission group 'network:*'");
+});
+
 test('stores approvals in localStorage-compatible storage keyed by code hash', () => {
 	const values = new Map<string, string>();
 	const store = new LocalStoragePermissionApprovalStore({
@@ -56,6 +65,22 @@ test('stores approvals in localStorage-compatible storage keyed by code hash', (
 	});
 	expect(store.load('hash-b')).toBeNull();
 	expect([...values.keys()]).toEqual(['safe-js:permissions:v1:hash-a']);
+});
+
+test('stores auto-allow low-risk permission setting in localStorage-compatible storage', () => {
+	const values = new Map<string, string>();
+	const store = new LocalStoragePermissionSettingsStore({
+		getItem: key => values.get(key) ?? null,
+		setItem: (key, value) => {
+			values.set(key, value);
+		},
+	});
+
+	expect(store.loadAutoAllowLowRiskPermissions()).toBe(false);
+	store.saveAutoAllowLowRiskPermissions(true);
+
+	expect(store.loadAutoAllowLowRiskPermissions()).toBe(true);
+	expect([...values.entries()]).toEqual([['safe-js:settings:v1:auto-allow-low-risk-permissions', 'true']]);
 });
 
 test('lists and prunes stored permission approvals', () => {

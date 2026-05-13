@@ -11,6 +11,11 @@ export interface PermissionApprovalStore {
 	save(approval: PermissionApproval): void;
 }
 
+export interface PermissionSettingsStore {
+	loadAutoAllowLowRiskPermissions(): boolean;
+	saveAutoAllowLowRiskPermissions(value: boolean): void;
+}
+
 export interface StorageLike {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
@@ -20,9 +25,27 @@ export interface StorageLike {
 }
 
 const STORAGE_PREFIX = 'safe-js:permissions:v1:';
+const SETTINGS_PREFIX = 'safe-js:settings:v1:';
+const AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY = `${SETTINGS_PREFIX}auto-allow-low-risk-permissions`;
 
 function normalizePermissions(permissions: readonly PermissionId[]): PermissionId[] {
 	return [...new Set(permissions)].sort();
+}
+
+export class LocalStoragePermissionSettingsStore implements PermissionSettingsStore {
+	private readonly storage: StorageLike;
+
+	constructor(storage: StorageLike = window.localStorage) {
+		this.storage = storage;
+	}
+
+	loadAutoAllowLowRiskPermissions(): boolean {
+		return this.storage.getItem(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY) === 'true';
+	}
+
+	saveAutoAllowLowRiskPermissions(value: boolean): void {
+		this.storage.setItem(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY, value ? 'true' : 'false');
+	}
 }
 
 export class LocalStoragePermissionApprovalStore implements PermissionApprovalStore {

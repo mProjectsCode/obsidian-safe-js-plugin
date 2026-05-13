@@ -110,17 +110,38 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 	},
 	{
 		id: 'storage:read',
-		name: 'Read Safe JS storage',
-		description: "Read this plugin's own script storage keys, not arbitrary vault or Obsidian storage.",
+		name: 'Read scoped Safe JS storage',
+		description: "Read this script source's own Safe JS storage keys, not arbitrary vault or Obsidian storage.",
 		severity: 'medium',
-		grantGuidance: 'Grant this when the script needs data it previously stored through Safe JS.',
+		grantGuidance: 'Grant this when the script needs data this same script source previously stored through Safe JS.',
 	},
 	{
 		id: 'storage:write',
-		name: 'Write Safe JS storage',
-		description: "Write this plugin's own script storage keys.",
+		name: 'Write scoped Safe JS storage',
+		description: "Write this script source's own Safe JS storage keys.",
 		severity: 'medium',
-		grantGuidance: 'Grant this when the script needs to save small plugin-scoped state.',
+		grantGuidance: 'Grant this when the script needs to save small state for later runs of the same script source.',
+	},
+	{
+		id: 'storage:global-read',
+		name: 'Read global Safe JS storage',
+		description: 'Read Safe JS storage keys shared across approved scripts on this device.',
+		severity: 'high',
+		grantGuidance: 'Grant this only when the script intentionally needs data shared by other Safe JS scripts.',
+	},
+	{
+		id: 'storage:global-write',
+		name: 'Write global Safe JS storage',
+		description: 'Write Safe JS storage keys shared across approved scripts on this device.',
+		severity: 'high',
+		grantGuidance: 'Grant this only when the script should intentionally share state with other Safe JS scripts.',
+	},
+	{
+		id: 'helpers:use',
+		name: 'Use helper functions',
+		description: 'Run pure Obsidian helper functions for paths, links, search, and YAML.',
+		severity: 'low',
+		grantGuidance: 'Grant this when a script needs Obsidian-compatible utility behavior without reading or changing vault data.',
 	},
 ];
 
@@ -138,7 +159,7 @@ export class PermissionParseError extends Error {
 	}
 }
 
-const permissionPattern = /^\/\/\s*@permission\s+([a-z][a-z0-9-]*:[a-z][a-z0-9-]*)\s*$/u;
+const permissionPattern = /^\/\/\s*@permission\s+([a-z][a-z0-9-]*:(?:[a-z][a-z0-9-]*|\*))\s*$/u;
 const permissionLikePattern = /^\/\/\s*@permission(?:\s+.*)?$/u;
 
 export function parseLeadingPermissions(code: string): ParsedPermissions {
@@ -173,7 +194,7 @@ export function parseLeadingPermissions(code: string): ParsedPermissions {
 		if (permissionLikePattern.test(trimmedLine)) {
 			throw new PermissionParseError(
 				headerOpen
-					? `Malformed permission comment on line ${lineNumber}. Use '// @permission namespace:name'.`
+					? `Malformed permission comment on line ${lineNumber}. Use '// @permission namespace:name' or '// @permission namespace:*'.`
 					: `Permission comments must appear before executable code. Found one on line ${lineNumber}.`,
 			);
 		}
@@ -191,10 +212,32 @@ export function parseLeadingPermissions(code: string): ParsedPermissions {
 }
 
 export function assertKnownPermissions(permissions: readonly PermissionId[], knownPermissions: ReadonlySet<PermissionId>): void {
-	const unknownPermission = permissions.find(permission => !knownPermissions.has(permission));
-	if (unknownPermission !== undefined) {
-		throw new PermissionParseError(`Unknown permission '${unknownPermission}'.`);
+	expandPermissionGroups(permissions, knownPermissions);
+}
+
+export function expandPermissionGroups(permissions: readonly PermissionId[], knownPermissions: ReadonlySet<PermissionId>): PermissionId[] {
+	const expandedPermissions: PermissionId[] = [];
+
+	for (const permission of permissions) {
+		if (!permission.endsWith(':*')) {
+			if (!knownPermissions.has(permission)) {
+				throw new PermissionParseError(`Unknown permission '${permission}'.`);
+			}
+
+			expandedPermissions.push(permission);
+			continue;
+		}
+
+		const namespace = permission.slice(0, -2);
+		const matchingPermissions = [...knownPermissions].filter(knownPermission => knownPermission.startsWith(`${namespace}:`)).sort();
+		if (matchingPermissions.length === 0) {
+			throw new PermissionParseError(`Unknown permission group '${permission}'.`);
+		}
+
+		expandedPermissions.push(...matchingPermissions);
 	}
+
+	return [...new Set(expandedPermissions)];
 }
 
 export function getPermissionDefinition(permission: PermissionId): PermissionDefinition | undefined {

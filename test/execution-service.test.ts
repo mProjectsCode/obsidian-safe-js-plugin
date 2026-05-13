@@ -95,6 +95,20 @@ class HangingWorkerFactory implements WorkerFactory {
 	}
 }
 
+async function waitForWorker(workerFactory: { workers: unknown[] }): Promise<void> {
+	for (let attempt = 0; attempt < 10; attempt += 1) {
+		if (workerFactory.workers.length > 0) {
+			return;
+		}
+
+		await new Promise(resolve => {
+			setTimeout(resolve, 0);
+		});
+	}
+
+	throw new Error('Worker was not created.');
+}
+
 function createRegistry(): RpcRegistry {
 	return new RpcRegistry([
 		{
@@ -124,6 +138,55 @@ function createService(options: { promptApproved: boolean; store?: MemoryPermiss
 		permissionPrompt: prompt,
 		workerFactory,
 		getDefaultTimeoutMs: () => 1000,
+		hashSource: async code => `hash:${code.length}`,
+		createExecutionId: () => 'exec-1',
+		now: () => 100,
+		setExecutionTimeout: (callback, timeoutMs) => setTimeout(callback, timeoutMs) as unknown as number,
+		clearExecutionTimeout: timeoutId => {
+			clearTimeout(timeoutId);
+		},
+	});
+
+	return { service, prompt, workerFactory, store };
+}
+
+function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean }) {
+	const prompt = new FakePrompt(false);
+	const workerFactory = new FakeWorkerFactory();
+	const store = new MemoryPermissionApprovalStore();
+	const service = new SafeJsExecutionService({
+		rpcRegistry: new RpcRegistry(
+			[
+				{
+					method: 'test:echo',
+					permission: 'test:call',
+					description: 'Echo a test value.',
+					usage: 'api.test.echo({ value })',
+					requestSchema: z.object({ value: z.string() }),
+					responseSchema: z.object({ value: z.string() }),
+					binding: {
+						namespace: 'test',
+						functionName: 'echo',
+						paramStyle: 'object',
+					},
+					handler: params => params,
+				},
+			],
+			[
+				{
+					id: 'test:call',
+					name: 'Test calls',
+					description: 'Run test calls.',
+					severity: 'low',
+					grantGuidance: 'Grant in tests.',
+				},
+			],
+		),
+		approvalStore: store,
+		permissionPrompt: prompt,
+		workerFactory,
+		getDefaultTimeoutMs: () => 1000,
+		getAutoAllowLowRiskPermissions: () => options.autoAllowLowRiskPermissions,
 		hashSource: async code => `hash:${code.length}`,
 		createExecutionId: () => 'exec-1',
 		now: () => 100,
@@ -182,6 +245,30 @@ return await api.test.echo({ value: "x" });`;
 	expect(prompt.requests).toHaveLength(0);
 });
 
+test('expands permission groups before prompting and execution', async () => {
+	const { service, prompt, store } = createService({ promptApproved: true });
+	const code = `// @permission test:*
+return await api.test.echo({ value: "x" });`;
+
+	const result = await service.execute(code);
+
+	expect(result.status).toBe('success');
+	expect(prompt.requests[0]?.permissions).toEqual(['test:call']);
+	expect(store.load(`hash:${code.length}`)?.permissions).toEqual(['test:call']);
+});
+
+test('auto-allows low-risk permissions when enabled', async () => {
+	const { service, prompt, store } = createLowRiskService({ autoAllowLowRiskPermissions: true });
+	const code = `// @permission test:call
+return await api.test.echo({ value: "x" });`;
+
+	const result = await service.execute(code);
+
+	expect(result.status).toBe('success');
+	expect(prompt.requests).toHaveLength(0);
+	expect(store.load(`hash:${code.length}`)?.permissions).toEqual(['test:call']);
+});
+
 test('returns parse errors before creating a worker', async () => {
 	const { service, workerFactory } = createService({ promptApproved: true });
 
@@ -204,4 +291,103 @@ return await api.test.echo({ value: "x" });`,
 
 	expect(result.status).toBe('timeout');
 	expect(workerFactory.workers[0]?.terminated).toBe(true);
+});
+
+test('can disable timeouts and cancel with an abort signal', async () => {
+	const workerFactory = new HangingWorkerFactory();
+	const prompt = new FakePrompt(true);
+	const store = new MemoryPermissionApprovalStore();
+	let timeoutCalls = 0;
+	const service = new SafeJsExecutionService({
+		rpcRegistry: createRegistry(),
+		approvalStore: store,
+		permissionPrompt: prompt,
+		workerFactory,
+		getDefaultTimeoutMs: () => null,
+		hashSource: async code => `hash:${code.length}`,
+		createExecutionId: () => 'exec-1',
+		now: () => 100,
+		setExecutionTimeout: () => {
+			timeoutCalls += 1;
+			return 1;
+		},
+		clearExecutionTimeout: () => {},
+	});
+	const abortController = new AbortController();
+
+	const resultPromise = service.execute(
+		`// @permission test:call
+return await api.test.echo({ value: "x" });`,
+		{ signal: abortController.signal },
+	);
+	await waitForWorker(workerFactory);
+	abortController.abort();
+	const result = await resultPromise;
+
+	expect(result.status).toBe('cancelled');
+	expect(timeoutCalls).toBe(0);
+	expect(workerFactory.workers[0]?.terminated).toBe(true);
+});
+
+test('cancelAll resolves active executions as cancelled', async () => {
+	const workerFactory = new HangingWorkerFactory();
+	const { service } = createService({ promptApproved: true, workerFactory: workerFactory as unknown as FakeWorkerFactory });
+
+	const resultPromise = service.execute(`// @permission test:call
+return await api.test.echo({ value: "x" });`);
+	await waitForWorker(workerFactory);
+	service.cancelAll();
+	const result = await resultPromise;
+
+	expect(result.status).toBe('cancelled');
+	expect(workerFactory.workers[0]?.terminated).toBe(true);
+});
+
+test('measures execution elapsed time after permission approval', async () => {
+	let now = 0;
+	const prompt = new (class extends FakePrompt {
+		override async requestApproval(request: PermissionPromptRequest): Promise<boolean> {
+			now = 1000;
+			return await super.requestApproval(request);
+		}
+	})(true);
+	const workerFactory = new FakeWorkerFactory();
+	const service = new SafeJsExecutionService({
+		rpcRegistry: new RpcRegistry([
+			{
+				method: 'test:echo',
+				permission: 'test:call',
+				description: 'Echo a test value.',
+				usage: 'api.test.echo({ value })',
+				requestSchema: z.object({ value: z.string() }),
+				responseSchema: z.object({ value: z.string() }),
+				binding: {
+					namespace: 'test',
+					functionName: 'echo',
+					paramStyle: 'object',
+				},
+				handler: params => {
+					now = 1250;
+					return params;
+				},
+			},
+		]),
+		approvalStore: new MemoryPermissionApprovalStore(),
+		permissionPrompt: prompt,
+		workerFactory,
+		getDefaultTimeoutMs: () => 1000,
+		hashSource: async code => `hash:${code.length}`,
+		createExecutionId: () => 'exec-1',
+		now: () => now,
+		setExecutionTimeout: (callback, timeoutMs) => setTimeout(callback, timeoutMs) as unknown as number,
+		clearExecutionTimeout: timeoutId => {
+			clearTimeout(timeoutId);
+		},
+	});
+
+	const result = await service.execute(`// @permission test:call
+return await api.test.echo({ value: "x" });`);
+
+	expect(result.status).toBe('success');
+	expect(result.elapsedMs).toBe(250);
 });

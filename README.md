@@ -15,7 +15,7 @@ This plugin is currently highly experimental. There are no stability guarantees 
 - Review permission prompts before a script runs.
 - Remember approvals per script source hash.
 - Open generated API docs from the **Open API docs** command.
-- Store small script-owned values through the permission-gated storage API.
+- Store small script-owned or explicitly global values through permission-gated storage APIs.
 - Inspect and clear stored approvals and script storage from the plugin settings.
 
 ## Code block languages
@@ -41,15 +41,19 @@ Scripts request permissions with leading comments:
 // @permission ui:notify
 ```
 
-Permission comments must appear before executable code. Safe JS stores approvals per source hash, so changing the script asks for approval again.
+Permission comments must appear before executable code. Use `namespace:*` to request every permission in a group, such as `// @permission vault:*`. Safe JS stores approvals per source hash, so changing the script asks for approval again.
 
 The approval modal describes the requested permissions and highlights network exfiltration risk when `network:request` is combined with vault, metadata, workspace, or editor read access.
+
+The setting **Auto-allow low-risk permissions** can skip prompts for low-risk permissions. Safe JS still remembers the approval by script hash on the current device.
+
+Execution timeouts are enabled by default. You can disable them in settings when a trusted script needs to keep running, but permission approval time is not counted as script run time.
 
 ## API Docs
 
 In Obsidian, run **Open API docs** to view the available permissions and `api.*` functions.
 
-Current API groups include vault, metadata, workspace, editor, file manager, UI, storage, and network helpers. Every host operation goes through a permission-gated RPC method.
+Current API groups include vault, metadata, workspace, editor, file manager, UI, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method.
 
 ## Privacy And Security
 
@@ -59,7 +63,7 @@ Do not trust the sandbox to be perfect. Review scripts before you run them, only
 
 Vault read and write APIs reject paths inside the active Obsidian configuration folder, including custom config folder names reported by Obsidian.
 
-The storage API is scoped to Safe JS script storage keys. Stored approvals and script storage keys can be inspected or cleared from **Settings → Safe JS**.
+The default storage API is scoped to the script source hash. Use `api.globalStorage.*` only when a script intentionally needs storage shared with other approved Safe JS scripts. Stored approvals and script storage keys can be inspected or cleared from **Settings → Safe JS**.
 
 ## Reporting Bugs And Security Issues
 

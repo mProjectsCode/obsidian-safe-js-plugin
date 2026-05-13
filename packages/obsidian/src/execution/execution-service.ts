@@ -1,16 +1,17 @@
 import type { HostRpcResponseMessage, SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
 import { workerToHostMessageSchema } from 'packages/obsidian/src/execution/contracts';
-import type { WorkerClient, WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
+import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import type { PermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
 import { hashCode } from 'packages/obsidian/src/permissions/hash';
 import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
-import { assertKnownPermissions, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
+import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export interface PermissionPromptRequest {
 	codeHash: string;
 	permissions: PermissionId[];
 	source?: SafeJsExecutionOptions['source'];
+	signal?: AbortSignal;
 }
 
 export interface PermissionPrompt {
@@ -22,7 +23,8 @@ export interface SafeJsExecutionServiceDependencies {
 	approvalStore: PermissionApprovalStore;
 	permissionPrompt: PermissionPrompt;
 	workerFactory: WorkerFactory;
-	getDefaultTimeoutMs(): number;
+	getDefaultTimeoutMs(): number | null;
+	getAutoAllowLowRiskPermissions?(): boolean;
 	hashSource?(code: string): Promise<string>;
 	now?(): number;
 	createExecutionId?(): string;
@@ -33,20 +35,22 @@ export interface SafeJsExecutionServiceDependencies {
 export class SafeJsExecutionService {
 	private readonly approvalStore: PermissionApprovalStore;
 	private readonly createExecutionId: () => string;
-	private readonly getDefaultTimeoutMs: () => number;
+	private readonly getAutoAllowLowRiskPermissions: () => boolean;
+	private readonly getDefaultTimeoutMs: () => number | null;
 	private readonly hashSource: (code: string) => Promise<string>;
 	private readonly now: () => number;
 	private readonly permissionPrompt: PermissionPrompt;
 	private readonly rpcRegistry: RpcRegistry;
 	private readonly workerFactory: WorkerFactory;
-	private readonly activeWorkers = new Set<WorkerClient>();
+	private readonly activeExecutions = new Set<{ cancel(): void }>();
 	private readonly clearExecutionTimeout: (timeoutId: number) => void;
 	private readonly setExecutionTimeout: (callback: () => void, timeoutMs: number) => number;
 
 	constructor(dependencies: SafeJsExecutionServiceDependencies) {
 		this.approvalStore = dependencies.approvalStore;
 		this.createExecutionId = (): string => dependencies.createExecutionId?.() ?? crypto.randomUUID();
-		this.getDefaultTimeoutMs = (): number => dependencies.getDefaultTimeoutMs();
+		this.getAutoAllowLowRiskPermissions = (): boolean => dependencies.getAutoAllowLowRiskPermissions?.() ?? false;
+		this.getDefaultTimeoutMs = (): number | null => dependencies.getDefaultTimeoutMs();
 		this.hashSource = async (code: string): Promise<string> => dependencies.hashSource?.(code) ?? hashCode(code);
 		this.now = (): number => dependencies.now?.() ?? Date.now();
 		this.permissionPrompt = dependencies.permissionPrompt;
@@ -76,8 +80,9 @@ export class SafeJsExecutionService {
 
 		try {
 			const parsedPermissions = parseLeadingPermissions(code);
-			permissions = parsedPermissions.permissions;
-			assertKnownPermissions(permissions, this.rpcRegistry.getKnownPermissions());
+			const knownPermissions = this.rpcRegistry.getKnownPermissions();
+			assertKnownPermissions(parsedPermissions.permissions, knownPermissions);
+			permissions = expandPermissionGroups(parsedPermissions.permissions, knownPermissions);
 		} catch (error) {
 			return {
 				status: 'parse-error',
@@ -91,38 +96,69 @@ export class SafeJsExecutionService {
 		const approval = this.approvalStore.load(codeHash);
 		const approvedPermissions = new Set(approval?.permissions ?? []);
 		const missingPermissions = permissions.filter(permission => !approvedPermissions.has(permission));
-		if (missingPermissions.length > 0) {
+		const autoApprovedPermissions = this.getAutoAllowLowRiskPermissions()
+			? missingPermissions.filter(permission => this.isLowRiskPermission(permission))
+			: [];
+		const promptedPermissions = missingPermissions.filter(permission => !autoApprovedPermissions.includes(permission));
+
+		if (promptedPermissions.length > 0) {
 			const approved = await this.permissionPrompt.requestApproval({
 				codeHash,
-				permissions: missingPermissions,
+				permissions: promptedPermissions,
 				source: options.source,
+				signal: options.signal,
 			});
 
 			if (!approved) {
+				if (options.signal?.aborted === true) {
+					return this.createCancelledResult(codeHash, permissions, startedAt);
+				}
+
 				return {
 					status: 'permission-denied',
 					codeHash,
-					message: `Execution cancelled because permission approval was denied for ${missingPermissions.join(', ')}.`,
+					message: `Execution cancelled because permission approval was denied for ${promptedPermissions.join(', ')}.`,
 					permissions,
 					elapsedMs: this.now() - startedAt,
 				};
 			}
+		}
 
+		if (options.signal?.aborted === true) {
+			return this.createCancelledResult(codeHash, permissions, this.now());
+		}
+
+		const newlyApprovedPermissions = [...autoApprovedPermissions, ...promptedPermissions];
+		if (newlyApprovedPermissions.length > 0) {
 			this.approvalStore.save({
 				codeHash,
-				permissions: [...new Set([...approvedPermissions, ...missingPermissions])],
+				permissions: [...new Set([...approvedPermissions, ...newlyApprovedPermissions])],
 				updatedAt: this.now(),
 			});
 		}
 
-		return await this.executeInWorker(code, codeHash, new Set(permissions), startedAt, options);
+		return await this.executeInWorker(code, codeHash, new Set(permissions), this.now(), options);
 	}
 
 	cancelAll(): void {
-		for (const worker of this.activeWorkers) {
-			worker.terminate();
+		for (const execution of this.activeExecutions) {
+			execution.cancel();
 		}
-		this.activeWorkers.clear();
+		this.activeExecutions.clear();
+	}
+
+	private isLowRiskPermission(permission: PermissionId): boolean {
+		return this.rpcRegistry.getPermissionDefinition(permission)?.severity === 'low';
+	}
+
+	private createCancelledResult(codeHash: string, permissions: PermissionId[], startedAt: number): SafeJsExecutionResult {
+		return {
+			status: 'cancelled',
+			codeHash,
+			message: 'Execution was cancelled.',
+			permissions,
+			elapsedMs: this.now() - startedAt,
+		};
 	}
 
 	private async executeInWorker(
@@ -134,36 +170,63 @@ export class SafeJsExecutionService {
 	): Promise<SafeJsExecutionResult> {
 		const executionId = this.createExecutionId();
 		const worker = this.workerFactory.create();
-		const timeoutMs = options.timeoutMs ?? this.getDefaultTimeoutMs();
-		this.activeWorkers.add(worker);
+		const timeoutMs = options.timeoutMs === undefined ? this.getDefaultTimeoutMs() : options.timeoutMs;
 
 		return await new Promise<SafeJsExecutionResult>(resolve => {
 			let settled = false;
+			let timeoutHandle: number | null = null;
 			const cleanupCallbacks: (() => void)[] = [];
+			const abortController = new AbortController();
 			const settle = (result: SafeJsExecutionResult): void => {
 				if (settled) {
 					return;
 				}
 
 				settled = true;
-				this.clearExecutionTimeout(timeoutHandle);
+				if (timeoutHandle !== null) {
+					this.clearExecutionTimeout(timeoutHandle);
+				}
 				for (const cleanup of cleanupCallbacks) {
 					cleanup();
 				}
 				worker.terminate();
-				this.activeWorkers.delete(worker);
+				this.activeExecutions.delete(activeExecution);
 				resolve(result);
 			};
+			const cancel = (): void => {
+				abortController.abort();
+				settle(this.createCancelledResult(codeHash, [...grantedPermissions], startedAt));
+			};
+			const activeExecution = { cancel };
+			this.activeExecutions.add(activeExecution);
 
-			const timeoutHandle = this.setExecutionTimeout(() => {
-				settle({
-					status: 'timeout',
-					codeHash,
-					message: `Execution timed out after ${timeoutMs}ms.`,
-					permissions: [...grantedPermissions],
-					elapsedMs: this.now() - startedAt,
+			if (timeoutMs !== null) {
+				timeoutHandle = this.setExecutionTimeout(() => {
+					abortController.abort();
+					settle({
+						status: 'timeout',
+						codeHash,
+						message: `Execution timed out after ${timeoutMs}ms.`,
+						permissions: [...grantedPermissions],
+						elapsedMs: this.now() - startedAt,
+					});
+				}, timeoutMs);
+			}
+
+			if (options.signal !== undefined) {
+				const abortListener = (): void => {
+					cancel();
+				};
+				options.signal.addEventListener('abort', abortListener, { once: true });
+				cleanupCallbacks.push(() => {
+					options.signal?.removeEventListener('abort', abortListener);
 				});
-			}, timeoutMs);
+			}
+
+			if (options.signal?.aborted === true) {
+				cancel();
+				return;
+			}
 
 			cleanupCallbacks.push(
 				worker.onMessage(message => {
@@ -192,11 +255,21 @@ export class SafeJsExecutionService {
 
 					if (parsedMessage.data.type === 'rpc-request') {
 						const rpcMessage = parsedMessage.data;
+						if (abortController.signal.aborted) {
+							return;
+						}
+
 						void this.rpcRegistry
 							.dispatch(rpcMessage.method, rpcMessage.params, {
 								grantedPermissions,
+								codeHash,
+								signal: abortController.signal,
 							})
 							.then(result => {
+								if (settled || abortController.signal.aborted) {
+									return;
+								}
+
 								const response: HostRpcResponseMessage = result.ok
 									? {
 											type: 'rpc-response',
@@ -215,6 +288,10 @@ export class SafeJsExecutionService {
 								worker.postMessage(response);
 							})
 							.catch(error => {
+								if (settled || abortController.signal.aborted) {
+									return;
+								}
+
 								worker.postMessage({
 									type: 'rpc-response',
 									executionId,

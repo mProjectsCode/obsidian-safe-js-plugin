@@ -121,5 +121,6 @@ export interface SafeJsExecutionSource {
 export interface SafeJsExecutionOptions {
 	source?: SafeJsExecutionSource;
 	debug?: boolean;
-	timeoutMs?: number;
+	timeoutMs?: number | null;
+	signal?: AbortSignal;
 }

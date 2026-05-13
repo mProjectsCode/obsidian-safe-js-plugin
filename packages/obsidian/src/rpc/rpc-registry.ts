@@ -5,6 +5,8 @@ import { z } from 'zod';
 
 export interface RpcContext {
 	grantedPermissions: ReadonlySet<PermissionId>;
+	codeHash?: string;
+	signal?: AbortSignal;
 }
 
 export interface RpcDispatchSuccess {
@@ -135,6 +137,16 @@ export class RpcRegistry {
 				error: {
 					code: 'missing-permission',
 					message: `RPC method '${methodName}' requires permission '${method.permission}'. Add '// @permission ${method.permission}' and approve it before calling this method.`,
+				},
+			};
+		}
+
+		if (context.signal?.aborted === true) {
+			return {
+				ok: false,
+				error: {
+					code: 'execution-cancelled',
+					message: 'Execution was cancelled before the RPC method ran.',
 				},
 			};
 		}

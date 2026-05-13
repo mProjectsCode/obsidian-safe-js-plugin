@@ -15,7 +15,24 @@ export class ObsidianPermissionPrompt implements PermissionPrompt {
 
 	async requestApproval(request: PermissionPromptRequest): Promise<boolean> {
 		return await new Promise<boolean>(resolve => {
-			new PermissionApprovalModal(this.app, this.rpcRegistry, request, resolve).open();
+			if (request.signal?.aborted === true) {
+				resolve(false);
+				return;
+			}
+
+			let modal: PermissionApprovalModal;
+			const abortListener = (): void => {
+				modal.close();
+			};
+			const cleanup = (): void => {
+				request.signal?.removeEventListener('abort', abortListener);
+			};
+			modal = new PermissionApprovalModal(this.app, this.rpcRegistry, request, approved => {
+				cleanup();
+				resolve(approved);
+			});
+			request.signal?.addEventListener('abort', abortListener, { once: true });
+			modal.open();
 		});
 	}
 }

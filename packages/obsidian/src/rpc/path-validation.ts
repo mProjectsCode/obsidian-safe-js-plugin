@@ -1,12 +1,10 @@
 export interface VaultPathValidationOptions {
 	allowEmpty?: boolean;
 	label?: string;
-	configDir?: string;
+	configDir: string;
 }
 
-const DEFAULT_CONFIG_DIR = ['.', 'obsidian'].join('');
-
-export function validateVaultPath(path: string, options: VaultPathValidationOptions = {}): string {
+export function validateVaultPath(path: string, options: VaultPathValidationOptions): string {
 	const label = options.label ?? 'Vault path';
 	const normalizedPath = normalizeVaultPath(path);
 
@@ -34,7 +32,11 @@ export function validateVaultPath(path: string, options: VaultPathValidationOpti
 	return normalizedPath;
 }
 
-export function isConfigVaultPath(path: string, configDir: string = DEFAULT_CONFIG_DIR): boolean {
+export function isConfigVaultPath(path: string, configDir: string): boolean {
+	if (configDir === '') {
+		throw new Error('Attempted to validate vault path against empty config directory.');
+	}
+
 	const normalizedPath = normalizeVaultPath(path).toLowerCase();
 	const normalizedConfigDir = normalizeVaultPath(configDir).toLowerCase();
 

@@ -1,17 +1,19 @@
 import type { App } from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
-import type { PermissionApproval } from 'packages/obsidian/src/permissions/approval-store';
-import { LocalStoragePermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
+import type { PermissionApproval, PermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
+import { LocalStoragePermissionApprovalStore, LocalStoragePermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
 import type { ScriptStorageEntry } from 'packages/obsidian/src/storage/script-storage';
 import { ScriptStorageManager } from 'packages/obsidian/src/storage/script-storage';
 
 export interface SafeJsSettings {
+	executionTimeoutsEnabled: boolean;
 	executionTimeoutMs: number;
 	debugBlocksEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: SafeJsSettings = {
+	executionTimeoutsEnabled: true,
 	executionTimeoutMs: 5000,
 	debugBlocksEnabled: true,
 };
@@ -19,11 +21,13 @@ export const DEFAULT_SETTINGS: SafeJsSettings = {
 export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
 	private readonly approvalStore = new LocalStoragePermissionApprovalStore();
+	private readonly permissionSettingsStore: PermissionSettingsStore;
 	private readonly staleEntryAgeMs = 30 * 24 * 60 * 60 * 1000;
 
-	constructor(app: App, plugin: SafeJsPlugin) {
+	constructor(app: App, plugin: SafeJsPlugin, permissionSettingsStore: PermissionSettingsStore = new LocalStoragePermissionSettingsStore()) {
 		super(app, plugin);
 		this.plugin = plugin;
+		this.permissionSettingsStore = permissionSettingsStore;
 	}
 
 	display(): void {
@@ -32,8 +36,23 @@ export class SafeJsSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
+			.setName('Execution timeouts')
+			.setDesc('Cancel scripts that run longer than the configured timeout.')
+			.addToggle(toggle =>
+				toggle.setValue(this.plugin.settings.executionTimeoutsEnabled).onChange(async value => {
+					this.plugin.settings.executionTimeoutsEnabled = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}),
+			);
+
+		new Setting(containerEl)
 			.setName('Execution timeout')
-			.setDesc('Maximum time a worker-backed script may run before it is cancelled.')
+			.setDesc(
+				this.plugin.settings.executionTimeoutsEnabled
+					? 'Maximum time a worker-backed script may run before it is cancelled.'
+					: 'Timeouts are disabled. This value is kept for later use.',
+			)
 			.addText(text =>
 				text
 					.setPlaceholder(String(DEFAULT_SETTINGS.executionTimeoutMs))
@@ -53,6 +72,15 @@ export class SafeJsSettingTab extends PluginSettingTab {
 				toggle.setValue(this.plugin.settings.debugBlocksEnabled).onChange(async value => {
 					this.plugin.settings.debugBlocksEnabled = value;
 					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Auto-allow low-risk permissions')
+			.setDesc('Allow low-risk permissions without prompting. Approvals are still remembered per script hash on this device.')
+			.addToggle(toggle =>
+				toggle.setValue(this.permissionSettingsStore.loadAutoAllowLowRiskPermissions()).onChange(value => {
+					this.permissionSettingsStore.saveAutoAllowLowRiskPermissions(value);
 				}),
 			);
 
@@ -108,8 +136,7 @@ export class SafeJsSettingTab extends PluginSettingTab {
 	}
 
 	private renderScriptStorage(containerEl: HTMLElement): void {
-		const storageManager = new ScriptStorageManager(this.app);
-		const entries = storageManager.list();
+		const entries = ScriptStorageManager.listAll(this.app);
 		const section = containerEl.createEl('section');
 		new Setting(section).setName('Script storage').setHeading();
 		section.createEl('p', {
@@ -121,14 +148,14 @@ export class SafeJsSettingTab extends PluginSettingTab {
 			.setDesc('Remove data written through the storage API by scripts.')
 			.addButton(button =>
 				button.setButtonText('Clear older than 30 days').onClick(() => {
-					const deletedCount = storageManager.deleteOlderThan(Date.now() - this.staleEntryAgeMs);
+					const deletedCount = ScriptStorageManager.deleteOlderThanAll(this.app, Date.now() - this.staleEntryAgeMs);
 					new Notice(`Cleared ${deletedCount} script storage ${deletedCount === 1 ? 'key' : 'keys'}.`);
 					this.display();
 				}),
 			)
 			.addButton(button =>
 				button.setButtonText('Clear all').onClick(() => {
-					const deletedCount = storageManager.deleteAll();
+					const deletedCount = ScriptStorageManager.deleteAllKnown(this.app);
 					new Notice(`Cleared ${deletedCount} script storage ${deletedCount === 1 ? 'key' : 'keys'}.`);
 					this.display();
 				}),
@@ -147,7 +174,7 @@ export class SafeJsSettingTab extends PluginSettingTab {
 		for (const entry of entries.slice(0, 20)) {
 			const item = list.createEl('li');
 			item.createEl('code', { text: entry.key });
-			item.createSpan({ text: ` - ${formatBytes(entry.sizeBytes)} - ${formatDate(entry.updatedAt)}` });
+			item.createSpan({ text: ` - ${formatScope(entry.scope)} - ${formatBytes(entry.sizeBytes)} - ${formatDate(entry.updatedAt)}` });
 		}
 
 		if (entries.length > 20) {
@@ -166,4 +193,8 @@ function formatBytes(bytes: number): string {
 	}
 
 	return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatScope(scope: string | null): string {
+	return scope === null ? 'global' : `scoped ${scope.slice(0, 12)}`;
 }

@@ -1,6 +1,6 @@
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { ok, okResponseSchema } from 'packages/obsidian/src/rpc/rpc-common';
-import type { RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
+import type { RpcContext, RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
 import { z } from 'zod';
 
 export const booleanResponseSchema = z.object({ value: z.boolean() });
@@ -35,7 +35,7 @@ export interface MethodOptions<TParams, TResult> {
 	argNames?: string[];
 	requestSchema: z.ZodType<TParams>;
 	responseSchema: z.ZodType<TResult>;
-	handler(params: TParams): Promise<TResult> | TResult;
+	handler(params: TParams, context: RpcContext): Promise<TResult> | TResult;
 }
 
 export function method<TParams, TResult>(options: MethodOptions<TParams, TResult>): RpcMethodDefinition<TParams, TResult> {
@@ -52,7 +52,7 @@ export function method<TParams, TResult>(options: MethodOptions<TParams, TResult
 			paramStyle: options.paramStyle ?? (options.argNames === undefined ? 'object' : 'args'),
 			argNames: options.argNames,
 		},
-		handler: params => options.handler(params),
+		handler: (params, context) => options.handler(params, context),
 	};
 }
 

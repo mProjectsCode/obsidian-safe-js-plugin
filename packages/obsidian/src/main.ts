@@ -2,7 +2,7 @@ import { Plugin } from 'obsidian';
 import { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import { BrowserWorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import { registerSafeJsMarkdownProcessors } from 'packages/obsidian/src/markdown';
-import { LocalStoragePermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
+import { LocalStoragePermissionApprovalStore, LocalStoragePermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
 import { createSafeJsRpcRegistry } from 'packages/obsidian/src/rpc/safe-js-rpc';
 import type { SafeJsSettings } from 'packages/obsidian/src/settings';
 import { DEFAULT_SETTINGS, SafeJsSettingTab } from 'packages/obsidian/src/settings';
@@ -16,15 +16,17 @@ export default class SafeJsPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		const rpcRegistry = createSafeJsRpcRegistry(this.app);
+		const permissionSettingsStore = new LocalStoragePermissionSettingsStore();
 		this.api = new SafeJsExecutionService({
 			rpcRegistry,
 			approvalStore: new LocalStoragePermissionApprovalStore(),
 			permissionPrompt: new ObsidianPermissionPrompt(this.app, rpcRegistry),
 			workerFactory: new BrowserWorkerFactory(),
-			getDefaultTimeoutMs: (): number => this.settings.executionTimeoutMs,
+			getDefaultTimeoutMs: (): number | null => (this.settings.executionTimeoutsEnabled ? this.settings.executionTimeoutMs : null),
+			getAutoAllowLowRiskPermissions: (): boolean => permissionSettingsStore.loadAutoAllowLowRiskPermissions(),
 		});
 
-		this.addSettingTab(new SafeJsSettingTab(this.app, this));
+		this.addSettingTab(new SafeJsSettingTab(this.app, this, permissionSettingsStore));
 		this.registerView(SAFE_JS_DOCS_VIEW_TYPE, leaf => new SafeJsDocsView(leaf, rpcRegistry));
 		this.addCommand({
 			id: 'open-api-docs',
