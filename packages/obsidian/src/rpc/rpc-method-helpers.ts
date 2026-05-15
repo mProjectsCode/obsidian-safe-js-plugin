@@ -1,6 +1,7 @@
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { ok, okResponseSchema } from 'packages/obsidian/src/rpc/rpc-common';
 import type { RpcContext, RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
+export { storageKeySchema, storageValueSchema } from 'packages/obsidian/src/storage/storage-validation';
 import { z } from 'zod';
 
 export const booleanResponseSchema = z.object({ value: z.boolean() });
@@ -15,15 +16,6 @@ export const base64StringSchema = z.string();
 export const httpUrlSchema = z.url().refine(url => url.startsWith('http://') || url.startsWith('https://'), {
 	message: 'Only HTTP and HTTPS URLs are allowed.',
 });
-export const storageKeySchema = z
-	.string()
-	.min(1)
-	.max(200)
-	.regex(/^[a-zA-Z0-9._:-]+$/u);
-export const storageValueSchema = jsonValueSchema.refine(value => JSON.stringify(value).length <= 200_000, {
-	message: 'Storage values must be 200KB or smaller.',
-});
-
 export interface MethodOptions<TParams, TResult> {
 	method: string;
 	permission: RpcMethodDefinition<TParams, TResult>['permission'];

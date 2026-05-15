@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { App } from 'obsidian';
+import { storageKeySchema } from 'packages/obsidian/src/storage/storage-validation';
 import { ScriptStorageManager, scopedScriptStorageKey, scriptStorageKey } from 'packages/obsidian/src/storage/script-storage';
 
 class FakeAppLocalStorage {
@@ -71,4 +72,10 @@ test('separates scoped storage from global storage', () => {
 
 test('uses the stable Safe JS script storage prefix', () => {
 	expect(scriptStorageKey('example')).toBe('safe-js:script-storage:v1:example');
+});
+
+test('rejects reserved storage keys that can cross storage scopes', () => {
+	expect(storageKeySchema.safeParse('regular-key').success).toBe(true);
+	expect(storageKeySchema.safeParse('__index').success).toBe(false);
+	expect(storageKeySchema.safeParse('scoped:hash:key').success).toBe(false);
 });

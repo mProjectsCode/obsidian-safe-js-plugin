@@ -1,5 +1,7 @@
 import type { App } from 'obsidian';
 import type { JsonValue } from 'packages/obsidian/src/execution/contracts';
+import { toJsonValue } from 'packages/obsidian/src/execution/json';
+import { z } from 'zod';
 
 export interface ScriptStorageEntry {
 	key: string;
@@ -19,6 +21,14 @@ interface BrowserStorageLike {
 
 const STORAGE_PREFIX = 'safe-js:script-storage:v1:';
 const SCOPED_STORAGE_PREFIX = `${STORAGE_PREFIX}scoped:`;
+const scriptStorageIndexSchema: z.ZodType<ScriptStorageIndex> = z.object({
+	keys: z.record(
+		z.string(),
+		z.object({
+			updatedAt: z.number(),
+		}),
+	),
+});
 
 export class ScriptStorageManager {
 	private readonly app: App;
@@ -118,23 +128,7 @@ export class ScriptStorageManager {
 
 	private loadIndex(): ScriptStorageIndex {
 		const rawIndex: unknown = this.app.loadLocalStorage(this.storageIndexKey());
-		if (rawIndex === null || typeof rawIndex !== 'object' || Array.isArray(rawIndex)) {
-			return { keys: {} };
-		}
-
-		const keys = (rawIndex as Partial<ScriptStorageIndex>).keys;
-		if (keys === undefined || typeof keys !== 'object' || Array.isArray(keys)) {
-			return { keys: {} };
-		}
-
-		const index: ScriptStorageIndex = { keys: {} };
-		for (const [key, entry] of Object.entries(keys)) {
-			if (typeof entry === 'object' && entry !== null && 'updatedAt' in entry && typeof entry.updatedAt === 'number') {
-				index.keys[key] = { updatedAt: entry.updatedAt };
-			}
-		}
-
-		return index;
+		return scriptStorageIndexSchema.safeParse(rawIndex).data ?? { keys: {} };
 	}
 
 	private saveIndex(index: ScriptStorageIndex): void {
@@ -224,12 +218,4 @@ export function scopedScriptStorageKey(scope: string, key: string): string {
 
 function getBrowserLocalStorage(): BrowserStorageLike | null {
 	return typeof window === 'undefined' ? null : window.localStorage;
-}
-
-function toJsonValue(value: unknown): JsonValue {
-	if (value === undefined) {
-		return null;
-	}
-
-	return JSON.parse(JSON.stringify(value)) as JsonValue;
 }

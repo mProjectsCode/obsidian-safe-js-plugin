@@ -14,7 +14,15 @@ This is a planning checklist for the host methods that Safe JS should mirror. Ke
 - Do not mirror Obsidian methods that require host callbacks, such as `Vault.process` or `FileManager.processFrontMatter`, by evaluating worker-supplied functions on the host.
 - Event subscriptions are deferred until there is a lifecycle design for unsubscribe, plugin unload cleanup, and backpressure.
 - If `network:request` is ever combined with vault or editor read permissions, the approval UI and docs must clearly warn that script output can leave the device.
-- [ ] Run a focused permission audit before expanding the RPC surface, especially for network requests, vault writes/deletes, editor writes, workspace navigation, and storage scope boundaries.
+- [x] Run a focused permission audit before expanding the RPC surface, especially for network requests, vault writes/deletes, editor writes, workspace navigation, and storage scope boundaries.
+
+Focused audit note, 2026-05-15:
+
+- Verified that RPC dispatch enforces each method's declared permission before request parsing or handler execution.
+- Verified that vault read/create/modify/move/delete handlers use the vault path validation boundary and do not expose `app.vault.adapter`.
+- Verified that network RPC methods require `network:request`, are limited to HTTP/HTTPS URLs, and the approval UI warns when network access is combined with vault, metadata, workspace, or editor reads.
+- Tightened workspace read DTOs so recent/active/layout file paths are filtered through the Obsidian config-folder guard and layout output does not return arbitrary view state.
+- Tightened storage key validation so script-provided keys cannot address the internal index key or collide with the scoped storage namespace from global storage.
 
 ## `core:read`
 

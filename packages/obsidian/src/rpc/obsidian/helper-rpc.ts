@@ -1,5 +1,6 @@
 import { getLinkpath, normalizePath, parseLinktext, parseYaml, prepareFuzzySearch, prepareSimpleSearch, stringifyYaml } from 'obsidian';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
+import { toJsonValue } from 'packages/obsidian/src/execution/json';
 import { method } from 'packages/obsidian/src/rpc/rpc-method-helpers';
 import type { RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
 import { z } from 'zod';
@@ -102,17 +103,4 @@ export function createHelperMethods(): RpcMethodDefinition[] {
 			handler: params => stringifyYaml(params.value),
 		}),
 	];
-}
-
-function toJsonValue(value: unknown): z.infer<typeof jsonValueSchema> {
-	if (value === undefined) {
-		return null;
-	}
-
-	const parsedValue = jsonValueSchema.safeParse(value);
-	if (parsedValue.success) {
-		return parsedValue.data;
-	}
-
-	return JSON.parse(JSON.stringify(value)) as z.infer<typeof jsonValueSchema>;
 }

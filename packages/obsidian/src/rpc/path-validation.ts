@@ -43,6 +43,15 @@ export function isConfigVaultPath(path: string, configDir: string): boolean {
 	return normalizedPath === normalizedConfigDir || normalizedPath.startsWith(`${normalizedConfigDir}/`);
 }
 
+export function isSafeVaultPath(path: string, options: VaultPathValidationOptions): boolean {
+	try {
+		validateVaultPath(path, options);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function normalizeVaultPath(path: string): string {
 	return path.replace(/\\/gu, '/').replace(/\/+/gu, '/').replace(/^\.\//u, '').replace(/\/$/u, '');
 }

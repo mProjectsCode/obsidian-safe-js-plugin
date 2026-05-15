@@ -3,12 +3,14 @@ import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import {
 	emptyParamsSchema,
 	fileToDto,
+	isSafeVaultPath,
 	leafToDto,
 	nullableFileDtoSchema,
 	ok,
 	okResponseSchema,
 	requireFile,
 	sanitizeOpenViewState,
+	sanitizeWorkspaceLayout,
 	toJsonValue,
 	validateVaultPath,
 } from 'packages/obsidian/src/rpc/rpc-common';
@@ -29,7 +31,7 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 			responseSchema: nullableFileDtoSchema,
 			handler: () => {
 				const file = app.workspace.getActiveFile();
-				return file === null ? null : fileToDto(file);
+				return file === null || !isSafeVaultPath(app, file.path) ? null : fileToDto(file);
 			},
 		}),
 		method({
@@ -41,7 +43,7 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 			functionName: 'getLastOpenFiles',
 			requestSchema: emptyParamsSchema,
 			responseSchema: z.object({ files: z.array(z.string()) }),
-			handler: () => ({ files: app.workspace.getLastOpenFiles() }),
+			handler: () => ({ files: app.workspace.getLastOpenFiles().filter(path => isSafeVaultPath(app, path)) }),
 		}),
 		method({
 			method: 'workspace:getLeavesOfType',
@@ -53,7 +55,9 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 			argNames: ['viewType'],
 			requestSchema: z.object({ viewType: z.string().min(1) }),
 			responseSchema: z.object({ leaves: z.array(jsonValueSchema) }),
-			handler: params => ({ leaves: app.workspace.getLeavesOfType(params.viewType).map(leafToDto) }),
+			handler: params => ({
+				leaves: app.workspace.getLeavesOfType(params.viewType).map(leaf => leafToDto(leaf, file => isSafeVaultPath(app, file.path))),
+			}),
 		}),
 		method({
 			method: 'workspace:getLayout',
@@ -64,7 +68,7 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 			functionName: 'getLayout',
 			requestSchema: emptyParamsSchema,
 			responseSchema: jsonValueResponseSchema,
-			handler: () => ({ value: toJsonValue(app.workspace.getLayout()) }),
+			handler: () => ({ value: sanitizeWorkspaceLayout(app, app.workspace.getLayout()) }),
 		}),
 		method({
 			method: 'workspace:getActiveViewInfo',
@@ -80,8 +84,8 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 				const activeLeaf = app.workspace.getMostRecentLeaf();
 				return {
 					value: toJsonValue({
-						activeFile: activeFile === null ? null : fileToDto(activeFile),
-						activeLeaf: activeLeaf === null ? null : leafToDto(activeLeaf),
+						activeFile: activeFile === null || !isSafeVaultPath(app, activeFile.path) ? null : fileToDto(activeFile),
+						activeLeaf: activeLeaf === null ? null : leafToDto(activeLeaf, file => isSafeVaultPath(app, file.path)),
 						hasEditor: app.workspace.activeEditor?.editor !== undefined,
 					}),
 				};
@@ -175,7 +179,7 @@ export function createWorkspaceMethods(app: App): RpcMethodDefinition[] {
 			handler(params) {
 				const leaf =
 					params.type === 'split' ? app.workspace.getLeaf('split', params.direction) : app.workspace.getLeaf((params.type ?? 'tab') as PaneType);
-				return leafToDto(leaf);
+				return leafToDto(leaf, file => isSafeVaultPath(app, file.path));
 			},
 		}),
 	];

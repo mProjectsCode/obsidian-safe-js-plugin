@@ -1,6 +1,7 @@
-import type { HostRpcResponseMessage, SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
-import { workerToHostMessageSchema } from 'packages/obsidian/src/execution/contracts';
+import type { SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
+import type { ActiveExecution } from 'packages/obsidian/src/execution/worker-execution-session';
+import { WorkerExecutionSession } from 'packages/obsidian/src/execution/worker-execution-session';
 import type { PermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
 import { hashCode } from 'packages/obsidian/src/permissions/hash';
 import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
@@ -42,7 +43,7 @@ export class SafeJsExecutionService {
 	private readonly permissionPrompt: PermissionPrompt;
 	private readonly rpcRegistry: RpcRegistry;
 	private readonly workerFactory: WorkerFactory;
-	private readonly activeExecutions = new Set<{ cancel(): void }>();
+	private readonly activeExecutions = new Set<ActiveExecution>();
 	private readonly clearExecutionTimeout: (timeoutId: number) => void;
 	private readonly setExecutionTimeout: (callback: () => void, timeoutMs: number) => number;
 
@@ -137,7 +138,22 @@ export class SafeJsExecutionService {
 			});
 		}
 
-		return await this.executeInWorker(code, codeHash, new Set(permissions), this.now(), options);
+		return await new WorkerExecutionSession({
+			rpcRegistry: this.rpcRegistry,
+			workerFactory: this.workerFactory,
+			activeExecutions: this.activeExecutions,
+			createExecutionId: this.createExecutionId,
+			now: this.now,
+			clearExecutionTimeout: this.clearExecutionTimeout,
+			setExecutionTimeout: this.setExecutionTimeout,
+		}).execute({
+			code,
+			codeHash,
+			grantedPermissions: new Set(permissions),
+			startedAt: this.now(),
+			executionOptions: options,
+			timeoutMs: options.timeoutMs === undefined ? this.getDefaultTimeoutMs() : options.timeoutMs,
+		});
 	}
 
 	cancelAll(): void {
@@ -159,189 +175,5 @@ export class SafeJsExecutionService {
 			permissions,
 			elapsedMs: this.now() - startedAt,
 		};
-	}
-
-	private async executeInWorker(
-		code: string,
-		codeHash: string,
-		grantedPermissions: ReadonlySet<PermissionId>,
-		startedAt: number,
-		options: SafeJsExecutionOptions,
-	): Promise<SafeJsExecutionResult> {
-		const executionId = this.createExecutionId();
-		const worker = this.workerFactory.create();
-		const timeoutMs = options.timeoutMs === undefined ? this.getDefaultTimeoutMs() : options.timeoutMs;
-
-		return await new Promise<SafeJsExecutionResult>(resolve => {
-			let settled = false;
-			let timeoutHandle: number | null = null;
-			const cleanupCallbacks: (() => void)[] = [];
-			const abortController = new AbortController();
-			const settle = (result: SafeJsExecutionResult): void => {
-				if (settled) {
-					return;
-				}
-
-				settled = true;
-				if (timeoutHandle !== null) {
-					this.clearExecutionTimeout(timeoutHandle);
-				}
-				for (const cleanup of cleanupCallbacks) {
-					cleanup();
-				}
-				worker.terminate();
-				this.activeExecutions.delete(activeExecution);
-				resolve(result);
-			};
-			const cancel = (): void => {
-				abortController.abort();
-				settle(this.createCancelledResult(codeHash, [...grantedPermissions], startedAt));
-			};
-			const activeExecution = { cancel };
-			this.activeExecutions.add(activeExecution);
-
-			if (timeoutMs !== null) {
-				timeoutHandle = this.setExecutionTimeout(() => {
-					abortController.abort();
-					settle({
-						status: 'timeout',
-						codeHash,
-						message: `Execution timed out after ${timeoutMs}ms.`,
-						permissions: [...grantedPermissions],
-						elapsedMs: this.now() - startedAt,
-					});
-				}, timeoutMs);
-			}
-
-			if (options.signal !== undefined) {
-				const abortListener = (): void => {
-					cancel();
-				};
-				options.signal.addEventListener('abort', abortListener, { once: true });
-				cleanupCallbacks.push(() => {
-					options.signal?.removeEventListener('abort', abortListener);
-				});
-			}
-
-			if (options.signal?.aborted === true) {
-				cancel();
-				return;
-			}
-
-			cleanupCallbacks.push(
-				worker.onMessage(message => {
-					const parsedMessage = workerToHostMessageSchema.safeParse(message);
-					if (!parsedMessage.success) {
-						settle({
-							status: 'validation-error',
-							codeHash,
-							message: 'Worker sent an invalid message.',
-							permissions: [...grantedPermissions],
-							elapsedMs: this.now() - startedAt,
-						});
-						return;
-					}
-
-					if (parsedMessage.data.executionId !== executionId) {
-						settle({
-							status: 'validation-error',
-							codeHash,
-							message: 'Worker sent a message for an unknown execution.',
-							permissions: [...grantedPermissions],
-							elapsedMs: this.now() - startedAt,
-						});
-						return;
-					}
-
-					if (parsedMessage.data.type === 'rpc-request') {
-						const rpcMessage = parsedMessage.data;
-						if (abortController.signal.aborted) {
-							return;
-						}
-
-						void this.rpcRegistry
-							.dispatch(rpcMessage.method, rpcMessage.params, {
-								grantedPermissions,
-								codeHash,
-								signal: abortController.signal,
-							})
-							.then(result => {
-								if (settled || abortController.signal.aborted) {
-									return;
-								}
-
-								const response: HostRpcResponseMessage = result.ok
-									? {
-											type: 'rpc-response',
-											executionId,
-											rpcRequestId: rpcMessage.rpcRequestId,
-											ok: true,
-											result: result.result,
-										}
-									: {
-											type: 'rpc-response',
-											executionId,
-											rpcRequestId: rpcMessage.rpcRequestId,
-											ok: false,
-											error: result.error,
-										};
-								worker.postMessage(response);
-							})
-							.catch(error => {
-								if (settled || abortController.signal.aborted) {
-									return;
-								}
-
-								worker.postMessage({
-									type: 'rpc-response',
-									executionId,
-									rpcRequestId: rpcMessage.rpcRequestId,
-									ok: false,
-									error: {
-										code: 'rpc-dispatch-error',
-										message: error instanceof Error ? error.message : 'RPC dispatch failed.',
-									},
-								});
-							});
-						return;
-					}
-
-					if (parsedMessage.data.ok) {
-						settle({
-							status: 'success',
-							codeHash,
-							value: parsedMessage.data.value,
-							permissions: [...grantedPermissions],
-							elapsedMs: this.now() - startedAt,
-						});
-						return;
-					}
-
-					settle({
-						status: 'runtime-error',
-						codeHash,
-						message: parsedMessage.data.error.message,
-						permissions: [...grantedPermissions],
-						elapsedMs: this.now() - startedAt,
-					});
-				}),
-				worker.onError(error => {
-					settle({
-						status: 'runtime-error',
-						codeHash,
-						message: error.message,
-						permissions: [...grantedPermissions],
-						elapsedMs: this.now() - startedAt,
-					});
-				}),
-			);
-
-			worker.postMessage({
-				type: 'execute',
-				executionId,
-				code,
-				rpcBindings: this.rpcRegistry.getWorkerBindings(),
-			});
-		});
 	}
 }

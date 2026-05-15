@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { validateVaultPath, type VaultPathValidationOptions } from 'packages/obsidian/src/rpc/path-validation';
+import { isSafeVaultPath, validateVaultPath, type VaultPathValidationOptions } from 'packages/obsidian/src/rpc/path-validation';
 
 const validatePathOptions: VaultPathValidationOptions = {
 	configDir: '.obsidian',
@@ -22,4 +22,12 @@ test('rejects Obsidian config folder paths', () => {
 	expect(() => validateVaultPath('.obsidian/plugins/safe-js/data.json', validatePathOptions)).toThrow('configuration folder');
 	expect(() => validateVaultPath('_config/plugins/safe-js/data.json', { configDir: '_config' })).toThrow('configuration folder');
 	expect(validateVaultPath('Notes/.obsidian.md', validatePathOptions)).toBe('Notes/.obsidian.md');
+});
+
+test('filters unsafe vault paths for returned DTOs', () => {
+	expect(isSafeVaultPath('Notes/Note.md', { allowEmpty: true, configDir: '.obsidian' })).toBe(true);
+	expect(isSafeVaultPath('', { allowEmpty: true, configDir: '.obsidian' })).toBe(true);
+	expect(isSafeVaultPath('.obsidian/plugins/safe-js/data.json', { allowEmpty: true, configDir: '.obsidian' })).toBe(false);
+	expect(isSafeVaultPath('../Note.md', { allowEmpty: true, configDir: '.obsidian' })).toBe(false);
+	expect(isSafeVaultPath('/tmp/Note.md', { allowEmpty: true, configDir: '.obsidian' })).toBe(false);
 });
