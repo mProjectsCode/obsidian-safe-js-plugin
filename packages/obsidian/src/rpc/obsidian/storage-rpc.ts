@@ -101,5 +101,5 @@ function createScopedStorageManager(app: App, context: RpcContext): ScriptStorag
 		throw new Error('Scoped storage requires a script source hash.');
 	}
 
-	return new ScriptStorageManager(app, Date.now, undefined, context.codeHash);
+	return new ScriptStorageManager(app, Date.now, context.codeHash);
 }

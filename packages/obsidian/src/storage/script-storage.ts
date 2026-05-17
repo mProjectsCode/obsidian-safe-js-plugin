@@ -14,11 +14,6 @@ interface ScriptStorageIndex {
 	keys: Record<string, { updatedAt: number }>;
 }
 
-interface BrowserStorageLike {
-	readonly length: number;
-	key(index: number): string | null;
-}
-
 const STORAGE_PREFIX = 'safe-js:script-storage:v1:';
 const SCOPED_STORAGE_PREFIX = `${STORAGE_PREFIX}scoped:`;
 const scriptStorageIndexSchema: z.ZodType<ScriptStorageIndex> = z.object({
@@ -32,14 +27,12 @@ const scriptStorageIndexSchema: z.ZodType<ScriptStorageIndex> = z.object({
 
 export class ScriptStorageManager {
 	private readonly app: App;
-	private readonly browserStorage: BrowserStorageLike | null;
 	private readonly now: () => number;
 	private readonly scope: string | null;
 
-	constructor(app: App, now: () => number = Date.now, browserStorage: BrowserStorageLike | null = getBrowserLocalStorage(), scope: string | null = null) {
+	constructor(app: App, now: () => number = Date.now, scope: string | null = null) {
 		this.app = app;
 		this.now = now;
-		this.browserStorage = browserStorage;
 		this.scope = scope;
 	}
 
@@ -60,11 +53,6 @@ export class ScriptStorageManager {
 	list(): ScriptStorageEntry[] {
 		const index = this.loadIndex();
 		const keys = new Map<string, { updatedAt: number }>(Object.entries(index.keys));
-		for (const legacyKey of this.getLegacyStorageKeys()) {
-			if (!keys.has(legacyKey)) {
-				keys.set(legacyKey, { updatedAt: 0 });
-			}
-		}
 
 		return [...keys.entries()]
 			.map(([key, entry]) => ({
@@ -99,26 +87,18 @@ export class ScriptStorageManager {
 		return entries.length;
 	}
 
-	static listAll(app: App, now: () => number = Date.now, browserStorage: BrowserStorageLike | null = getBrowserLocalStorage()): ScriptStorageEntry[] {
-		return ScriptStorageManager.createKnownManagers(app, now, browserStorage)
+	static listAll(app: App, now: () => number = Date.now): ScriptStorageEntry[] {
+		return ScriptStorageManager.createKnownManagers(app, now)
 			.flatMap(manager => manager.list())
 			.sort((left, right) => right.updatedAt - left.updatedAt);
 	}
 
-	static deleteOlderThanAll(
-		app: App,
-		cutoffTime: number,
-		now: () => number = Date.now,
-		browserStorage: BrowserStorageLike | null = getBrowserLocalStorage(),
-	): number {
-		return ScriptStorageManager.createKnownManagers(app, now, browserStorage).reduce(
-			(deletedCount, manager) => deletedCount + manager.deleteOlderThan(cutoffTime),
-			0,
-		);
+	static deleteOlderThanAll(app: App, cutoffTime: number, now: () => number = Date.now): number {
+		return ScriptStorageManager.createKnownManagers(app, now).reduce((deletedCount, manager) => deletedCount + manager.deleteOlderThan(cutoffTime), 0);
 	}
 
-	static deleteAllKnown(app: App, now: () => number = Date.now, browserStorage: BrowserStorageLike | null = getBrowserLocalStorage()): number {
-		return ScriptStorageManager.createKnownManagers(app, now, browserStorage).reduce((deletedCount, manager) => deletedCount + manager.deleteAll(), 0);
+	static deleteAllKnown(app: App, now: () => number = Date.now): number {
+		return ScriptStorageManager.createKnownManagers(app, now).reduce((deletedCount, manager) => deletedCount + manager.deleteAll(), 0);
 	}
 
 	private getSizeBytes(key: string): number {
@@ -147,26 +127,6 @@ export class ScriptStorageManager {
 		this.saveIndex(index);
 	}
 
-	private getLegacyStorageKeys(): string[] {
-		if (this.browserStorage === null) {
-			return [];
-		}
-
-		const keys: string[] = [];
-		for (let index = 0; index < this.browserStorage.length; index += 1) {
-			const key = this.browserStorage.key(index);
-			if (this.scope === null && key?.startsWith(SCOPED_STORAGE_PREFIX) === true) {
-				continue;
-			}
-
-			if (key?.startsWith(this.storagePrefix()) === true && key !== this.storageIndexKey()) {
-				keys.push(key.slice(this.storagePrefix().length));
-			}
-		}
-
-		return keys;
-	}
-
 	private storageIndexKey(): string {
 		return `${this.storagePrefix()}__index`;
 	}
@@ -179,32 +139,8 @@ export class ScriptStorageManager {
 		return this.scope === null ? STORAGE_PREFIX : `${SCOPED_STORAGE_PREFIX}${encodeURIComponent(this.scope)}:`;
 	}
 
-	private static createKnownManagers(app: App, now: () => number, browserStorage: BrowserStorageLike | null): ScriptStorageManager[] {
-		return [
-			new ScriptStorageManager(app, now, browserStorage),
-			...ScriptStorageManager.getKnownScopes(browserStorage).map(scope => new ScriptStorageManager(app, now, browserStorage, scope)),
-		];
-	}
-
-	private static getKnownScopes(browserStorage: BrowserStorageLike | null): string[] {
-		if (browserStorage === null) {
-			return [];
-		}
-
-		const scopes = new Set<string>();
-		for (let index = 0; index < browserStorage.length; index += 1) {
-			const key = browserStorage.key(index);
-			if (key?.startsWith(SCOPED_STORAGE_PREFIX) !== true) {
-				continue;
-			}
-
-			const scopeEndIndex = key.indexOf(':', SCOPED_STORAGE_PREFIX.length);
-			if (scopeEndIndex > SCOPED_STORAGE_PREFIX.length) {
-				scopes.add(decodeURIComponent(key.slice(SCOPED_STORAGE_PREFIX.length, scopeEndIndex)));
-			}
-		}
-
-		return [...scopes].sort();
+	private static createKnownManagers(app: App, now: () => number): ScriptStorageManager[] {
+		return [new ScriptStorageManager(app, now)];
 	}
 }
 
@@ -214,8 +150,4 @@ export function scriptStorageKey(key: string): string {
 
 export function scopedScriptStorageKey(scope: string, key: string): string {
 	return `${SCOPED_STORAGE_PREFIX}${encodeURIComponent(scope)}:${key}`;
-}
-
-function getBrowserLocalStorage(): BrowserStorageLike | null {
-	return typeof window === 'undefined' ? null : window.localStorage;
 }

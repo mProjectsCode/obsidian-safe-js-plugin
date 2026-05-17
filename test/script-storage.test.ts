@@ -20,18 +20,6 @@ class FakeAppLocalStorage {
 	}
 }
 
-class FakeBrowserStorage {
-	constructor(private readonly keys: string[]) {}
-
-	get length(): number {
-		return this.keys.length;
-	}
-
-	key(index: number): string | null {
-		return this.keys[index] ?? null;
-	}
-}
-
 test('indexes script storage writes for inspection and cleanup', () => {
 	let now = 100;
 	const app = new FakeAppLocalStorage() as unknown as App;
@@ -49,18 +37,10 @@ test('indexes script storage writes for inspection and cleanup', () => {
 	expect(storage.get('new-key')).toBe('value');
 });
 
-test('lists legacy script storage keys found in localStorage', () => {
-	const app = new FakeAppLocalStorage() as unknown as App;
-	const browserStorage = new FakeBrowserStorage([scriptStorageKey('legacy-key'), scriptStorageKey('__index'), 'other-key']);
-	const storage = new ScriptStorageManager(app, () => 100, browserStorage);
-
-	expect(storage.list()).toEqual([{ key: 'legacy-key', scope: null, updatedAt: 0, sizeBytes: 4 }]);
-});
-
 test('separates scoped storage from global storage', () => {
 	const app = new FakeAppLocalStorage() as unknown as App;
 	const globalStorage = new ScriptStorageManager(app, () => 100);
-	const scopedStorage = new ScriptStorageManager(app, () => 200, null, 'hash:a');
+	const scopedStorage = new ScriptStorageManager(app, () => 200, 'hash:a');
 
 	globalStorage.set('shared-key', 'global');
 	scopedStorage.set('shared-key', 'scoped');

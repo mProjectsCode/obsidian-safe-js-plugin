@@ -83,11 +83,7 @@ export const workerExecutionResultMessageSchema = z.discriminatedUnion('ok', [
 	}),
 ]);
 
-export type WorkerExecutionResultMessage = z.infer<typeof workerExecutionResultMessageSchema>;
-
 export const workerToHostMessageSchema = z.union([hostRpcRequestMessageSchema, workerExecutionResultMessageSchema]);
-
-export type WorkerToHostMessage = z.infer<typeof workerToHostMessageSchema>;
 
 export type SafeJsExecutionResult =
 	| {

@@ -1,6 +1,6 @@
 # Safe JS
 
-Safe JS is an Obsidian plugin for running note-owned JavaScript through sandboxed Web Workers and a deliberately small host API.
+Safe JS is an Obsidian plugin for running JavaScript through sandboxed Web Workers and a deliberately small host API.
 
 Scripts do not receive direct access to the DOM, Node.js, Electron, or the Obsidian app object. Instead, they declare permissions with leading comments and call documented `api.*` functions that are validated by the plugin before they reach Obsidian.
 
@@ -57,7 +57,7 @@ Current API groups include vault, metadata, workspace, editor, file manager, UI,
 
 ## Privacy And Security
 
-Network requests are only available to scripts that declare and receive approval for `network:request`. The plugin does not fetch or execute remote code, and it does not auto-update outside normal plugin releases.
+Network requests are only available to scripts that declare and receive approval for `network:request`. The plugin does not fetch or execute remote code, and it does not auto-update outside normal plugin releases. See [SECURITY.md](SECURITY.md) for the full security policy.
 
 Do not trust the sandbox to be perfect. Review scripts before you run them, only approve permissions you understand, and treat code from other people as untrusted even when it runs through Safe JS.
 
@@ -67,7 +67,7 @@ The default storage API is scoped to the script source hash. Use `api.globalStor
 
 ## Reporting Bugs And Security Issues
 
-Please report bugs via the issues page on GitHub. Report security issues responsibly by emailing m.projects.code@gmail.com. Do not publicly disclose security issues until there has been a reasonable opportunity to investigate and prepare a fix.
+Please report bugs via the issues page on GitHub. Report security issues responsibly using the process in [SECURITY.md](SECURITY.md).
 
 ## AI Assistance Notice
 
@@ -75,21 +75,7 @@ Parts of this plugin were vibe coded with AI assistance. Security-sensitive code
 
 ## Development
 
-This project uses Bun, Vite, TypeScript, Svelte, and ESLint.
-
-```bash
-bun install
-bun run dev
-bun run check
-```
-
-Common commands:
-
-- `bun run build` builds the production plugin bundle.
-- `bun run dev` builds the development plugin bundle into `exampleVault/.obsidian/plugins/safe-js`.
-- `bun run test` runs the Bun test suite.
-- `bun run lint` runs ESLint.
-- `bun run typecheck` runs TypeScript checks.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Design Goals
 
