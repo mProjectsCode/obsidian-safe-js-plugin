@@ -1,6 +1,8 @@
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { ok, okResponseSchema } from 'packages/obsidian/src/rpc/rpc-common';
 import type { RpcContext, RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
+import type { SafeJsValidatorReference } from 'packages/obsidian/src/rpc/validators';
+import { zodValidator } from 'packages/obsidian/src/rpc/validators';
 export { storageKeySchema, storageValueSchema } from 'packages/obsidian/src/storage/storage-validation';
 import { z } from 'zod';
 
@@ -25,8 +27,10 @@ export interface MethodOptions<TParams, TResult> {
 	functionName: string;
 	paramStyle?: 'object' | 'path' | 'optionalPath' | 'args';
 	argNames?: string[];
-	requestSchema: z.ZodType<TParams>;
-	responseSchema: z.ZodType<TResult>;
+	requestSchema?: z.ZodType<TParams>;
+	responseSchema?: z.ZodType<TResult>;
+	requestValidator?: SafeJsValidatorReference<TParams>;
+	responseValidator?: SafeJsValidatorReference<TResult>;
 	handler(params: TParams, context: RpcContext): Promise<TResult> | TResult;
 }
 
@@ -36,8 +40,8 @@ export function method<TParams, TResult>(options: MethodOptions<TParams, TResult
 		permission: options.permission,
 		description: options.description,
 		usage: options.usage,
-		requestSchema: options.requestSchema,
-		responseSchema: options.responseSchema,
+		requestValidator: validatorFor(options.requestValidator, options.requestSchema, `${options.method}:request`),
+		responseValidator: validatorFor(options.responseValidator, options.responseSchema, `${options.method}:response`),
 		binding: {
 			namespace: options.namespace,
 			functionName: options.functionName,
@@ -46,6 +50,18 @@ export function method<TParams, TResult>(options: MethodOptions<TParams, TResult
 		},
 		handler: (params, context) => options.handler(params, context),
 	};
+}
+
+function validatorFor<T>(validator: SafeJsValidatorReference<T> | undefined, schema: z.ZodType<T> | undefined, id: string): SafeJsValidatorReference<T> {
+	if (validator !== undefined) {
+		return validator;
+	}
+
+	if (schema === undefined) {
+		throw new Error(`Missing validator '${id}'.`);
+	}
+
+	return zodValidator(id, `Internal validator for ${id}.`, schema);
 }
 
 export function editorRead<TParams, TResult>(

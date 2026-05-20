@@ -13,7 +13,7 @@ This plugin is currently highly experimental. There are no stability guarantees 
 - Run `safe-js` code blocks from notes.
 - Enable optional `safe-js-debug` blocks for diagnostics.
 - Review permission prompts before a script runs.
-- Remember approvals per script source hash.
+- Remember approvals per script source hash and caller plugin.
 - Open generated API docs from the **Open API docs** command.
 - Store small script-owned or explicitly global values through permission-gated storage APIs.
 - Inspect and clear stored approvals and script storage from the plugin settings.
@@ -41,7 +41,7 @@ Scripts request permissions with leading comments:
 // @permission ui:notify
 ```
 
-Permission comments must appear before executable code. Use `namespace:*` to request every permission in a group, such as `// @permission vault:*`. Safe JS stores approvals per source hash, so changing the script asks for approval again.
+Permission comments must appear before executable code. Use `namespace:*` to request every permission in a group, such as `// @permission vault:*`. Safe JS stores approvals per source hash and caller plugin, so changing the script or running it from a different plugin asks for approval again.
 
 The approval modal describes the requested permissions and highlights network exfiltration risk when `network:request` is combined with vault, metadata, workspace, or editor read access.
 
@@ -54,6 +54,21 @@ Execution timeouts are enabled by default. You can disable them in settings when
 In Obsidian, run **Open API docs** to view the available permissions and `api.*` functions.
 
 Current API groups include vault, metadata, workspace, editor, file manager, UI, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method.
+
+## Plugin Integration
+
+Other plugins can access Safe JS through the loaded `safe-js` plugin instance:
+
+```ts
+const safeJs = this.app.plugins.getPlugin('safe-js');
+const safeJsApi = safeJs?.api.forPlugin(this);
+const result = await safeJsApi?.execute(`// @permission ui:notify
+await api.ui.notice("Hello from another plugin");`);
+```
+
+Plugins can register custom permission definitions, permission-gated sandbox functions, and JSON-safe sandbox globals through the caller API returned by `forPlugin(this)`. Custom functions must use JSON-safe request and response validators, referenced by Safe JS validator ID or supplied as custom validation functions. Safe JS does not expose Zod on the public plugin API. Registered functions and globals are removed when the caller plugin unloads.
+
+Built-in validator IDs include `json:value`, `json:record`, `rpc:emptyParams`, `rpc:pathParams`, `rpc:optionalPathParams`, `response:ok`, `storage:key`, `storage:value`, `vault:path`, and `vault:optionalPath`.
 
 ## Privacy And Security
 

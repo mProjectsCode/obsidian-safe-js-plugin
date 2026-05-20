@@ -1,13 +1,20 @@
+import type { App } from 'obsidian';
 import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 
 export interface PermissionApproval {
 	codeHash: string;
+	callerPluginId?: string;
 	permissions: PermissionId[];
 	updatedAt: number;
 }
 
+export interface PermissionApprovalSubject {
+	codeHash: string;
+	callerPluginId?: string;
+}
+
 export interface PermissionApprovalStore {
-	load(codeHash: string): PermissionApproval | null;
+	load(subject: PermissionApprovalSubject): PermissionApproval | null;
 	save(approval: PermissionApproval): void;
 }
 
@@ -16,12 +23,11 @@ export interface PermissionSettingsStore {
 	saveAutoAllowLowRiskPermissions(value: boolean): void;
 }
 
-export interface StorageLike {
-	getItem(key: string): string | null;
-	setItem(key: string, value: string): void;
-	removeItem?(key: string): void;
-	key?(index: number): string | null;
-	readonly length?: number;
+export interface PermissionStorage {
+	delete(key: string): void;
+	get(key: string): unknown;
+	keys(): string[];
+	set(key: string, value: unknown): void;
 }
 
 const STORAGE_PREFIX = 'safe-js:permissions:v1:';
@@ -32,45 +38,104 @@ function normalizePermissions(permissions: readonly PermissionId[]): PermissionI
 	return [...new Set(permissions)].sort();
 }
 
-export class LocalStoragePermissionSettingsStore implements PermissionSettingsStore {
-	private readonly storage: StorageLike;
+function approvalStorageId(subject: PermissionApprovalSubject): string {
+	if (subject.callerPluginId === undefined || subject.callerPluginId === '') {
+		return subject.codeHash;
+	}
 
-	constructor(storage: StorageLike = window.localStorage) {
+	return `${encodeURIComponent(subject.callerPluginId)}:${encodeURIComponent(subject.codeHash)}`;
+}
+
+export class AppPermissionStorage implements PermissionStorage {
+	private readonly app: App;
+
+	constructor(app: App) {
+		this.app = app;
+	}
+
+	delete(key: string): void {
+		this.app.saveLocalStorage(key, null);
+		const keys = new Set(this.keys());
+		keys.delete(key);
+		this.app.saveLocalStorage(PERMISSION_STORAGE_INDEX_KEY, [...keys].sort());
+	}
+
+	get(key: string): unknown {
+		return this.app.loadLocalStorage(key);
+	}
+
+	keys(): string[] {
+		const rawIndex: unknown = this.app.loadLocalStorage(PERMISSION_STORAGE_INDEX_KEY);
+		return parseStorageIndex(rawIndex);
+	}
+
+	set(key: string, value: unknown): void {
+		this.app.saveLocalStorage(key, value);
+		const keys = new Set(this.keys());
+		keys.add(key);
+		this.app.saveLocalStorage(PERMISSION_STORAGE_INDEX_KEY, [...keys].sort());
+	}
+}
+
+export class MemoryPermissionStorage implements PermissionStorage {
+	private readonly values = new Map<string, unknown>();
+
+	delete(key: string): void {
+		this.values.delete(key);
+	}
+
+	get(key: string): unknown {
+		return this.values.get(key) ?? null;
+	}
+
+	keys(): string[] {
+		return [...this.values.keys()].sort();
+	}
+
+	set(key: string, value: unknown): void {
+		this.values.set(key, value);
+	}
+}
+
+export class LocalStoragePermissionSettingsStore implements PermissionSettingsStore {
+	private readonly storage: PermissionStorage;
+
+	constructor(storage: PermissionStorage) {
 		this.storage = storage;
 	}
 
 	loadAutoAllowLowRiskPermissions(): boolean {
-		return this.storage.getItem(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY) === 'true';
+		return this.storage.get(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY) === true;
 	}
 
 	saveAutoAllowLowRiskPermissions(value: boolean): void {
-		this.storage.setItem(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY, value ? 'true' : 'false');
+		this.storage.set(AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY, value);
 	}
 }
 
 export class LocalStoragePermissionApprovalStore implements PermissionApprovalStore {
-	private readonly storage: StorageLike;
+	private readonly storage: PermissionStorage;
 
-	constructor(storage: StorageLike = window.localStorage) {
+	constructor(storage: PermissionStorage) {
 		this.storage = storage;
 	}
 
-	load(codeHash: string): PermissionApproval | null {
-		const rawValue = this.storage.getItem(`${STORAGE_PREFIX}${codeHash}`);
-		if (rawValue === null) {
+	load(subject: PermissionApprovalSubject): PermissionApproval | null {
+		const rawValue = this.storage.get(`${STORAGE_PREFIX}${approvalStorageId(subject)}`);
+		if (!isPermissionApprovalRecord(rawValue)) {
 			return null;
 		}
 
 		try {
-			const parsedValue = JSON.parse(rawValue) as Partial<PermissionApproval>;
-			if (parsedValue.codeHash !== codeHash || !Array.isArray(parsedValue.permissions) || typeof parsedValue.updatedAt !== 'number') {
+			if (rawValue.codeHash !== subject.codeHash || rawValue.callerPluginId !== subject.callerPluginId) {
 				return null;
 			}
 
 			return {
-				codeHash,
-				permissions: normalizePermissions(parsedValue.permissions),
-				updatedAt: parsedValue.updatedAt,
+				codeHash: subject.codeHash,
+				callerPluginId: subject.callerPluginId,
+				permissions: normalizePermissions(rawValue.permissions),
+				updatedAt: rawValue.updatedAt,
 			};
 		} catch {
 			return null;
@@ -78,35 +143,28 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 	}
 
 	save(approval: PermissionApproval): void {
-		this.storage.setItem(
-			`${STORAGE_PREFIX}${approval.codeHash}`,
-			JSON.stringify({
-				codeHash: approval.codeHash,
-				permissions: normalizePermissions(approval.permissions),
-				updatedAt: approval.updatedAt,
-			}),
-		);
+		this.storage.set(`${STORAGE_PREFIX}${approvalStorageId(approval)}`, {
+			codeHash: approval.codeHash,
+			callerPluginId: approval.callerPluginId,
+			permissions: normalizePermissions(approval.permissions),
+			updatedAt: approval.updatedAt,
+		});
 	}
 
 	list(): PermissionApproval[] {
 		return this.getApprovalKeys()
-			.map(key => this.load(key.slice(STORAGE_PREFIX.length)))
+			.map(key => this.loadByStorageId(key.slice(STORAGE_PREFIX.length)))
 			.filter((approval): approval is PermissionApproval => approval !== null)
 			.sort((left, right) => right.updatedAt - left.updatedAt);
 	}
 
-	delete(codeHash: string): boolean {
-		const key = `${STORAGE_PREFIX}${codeHash}`;
-		if (this.storage.getItem(key) === null) {
+	delete(subject: PermissionApprovalSubject): boolean {
+		const key = `${STORAGE_PREFIX}${approvalStorageId(subject)}`;
+		if (this.storage.get(key) === null) {
 			return false;
 		}
 
-		if (this.storage.removeItem !== undefined) {
-			this.storage.removeItem(key);
-		} else {
-			this.storage.setItem(key, '');
-		}
-
+		this.storage.delete(key);
 		return true;
 	}
 
@@ -114,7 +172,7 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 		let deletedCount = 0;
 
 		for (const approval of this.list()) {
-			if (approval.updatedAt < cutoffTime && this.delete(approval.codeHash)) {
+			if (approval.updatedAt < cutoffTime && this.delete(approval)) {
 				deletedCount += 1;
 			}
 		}
@@ -126,7 +184,7 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 		let deletedCount = 0;
 
 		for (const approval of this.list()) {
-			if (this.delete(approval.codeHash)) {
+			if (this.delete(approval)) {
 				deletedCount += 1;
 			}
 		}
@@ -135,32 +193,63 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 	}
 
 	private getApprovalKeys(): string[] {
-		if (this.storage.key === undefined || typeof this.storage.length !== 'number') {
-			return [];
-		}
-
-		const keys: string[] = [];
-		for (let index = 0; index < this.storage.length; index += 1) {
-			const key = this.storage.key(index);
-			if (key?.startsWith(STORAGE_PREFIX) === true) {
-				keys.push(key);
-			}
-		}
-
-		return keys;
+		return this.storage.keys().filter(key => key.startsWith(STORAGE_PREFIX));
 	}
+
+	private loadByStorageId(storageId: string): PermissionApproval | null {
+		const rawValue = this.storage.get(`${STORAGE_PREFIX}${storageId}`);
+		if (!isPermissionApprovalRecord(rawValue)) {
+			return null;
+		}
+
+		try {
+			return {
+				codeHash: rawValue.codeHash,
+				callerPluginId: rawValue.callerPluginId,
+				permissions: normalizePermissions(rawValue.permissions),
+				updatedAt: rawValue.updatedAt,
+			};
+		} catch {
+			return null;
+		}
+	}
+}
+
+const PERMISSION_STORAGE_INDEX_KEY = `${SETTINGS_PREFIX}__index`;
+
+function parseStorageIndex(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	return value.filter((key): key is string => typeof key === 'string');
+}
+
+function isPermissionApprovalRecord(value: unknown): value is PermissionApproval {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'codeHash' in value &&
+		typeof value.codeHash === 'string' &&
+		(!('callerPluginId' in value) || typeof value.callerPluginId === 'string' || value.callerPluginId === undefined) &&
+		'permissions' in value &&
+		Array.isArray(value.permissions) &&
+		'updatedAt' in value &&
+		typeof value.updatedAt === 'number'
+	);
 }
 
 export class MemoryPermissionApprovalStore implements PermissionApprovalStore {
 	private readonly approvals = new Map<string, PermissionApproval>();
 
-	load(codeHash: string): PermissionApproval | null {
-		return this.approvals.get(codeHash) ?? null;
+	load(subject: PermissionApprovalSubject): PermissionApproval | null {
+		return this.approvals.get(approvalStorageId(subject)) ?? null;
 	}
 
 	save(approval: PermissionApproval): void {
-		this.approvals.set(approval.codeHash, {
+		this.approvals.set(approvalStorageId(approval), {
 			codeHash: approval.codeHash,
+			callerPluginId: approval.callerPluginId,
 			permissions: normalizePermissions(approval.permissions),
 			updatedAt: approval.updatedAt,
 		});
@@ -170,15 +259,15 @@ export class MemoryPermissionApprovalStore implements PermissionApprovalStore {
 		return [...this.approvals.values()].sort((left, right) => right.updatedAt - left.updatedAt);
 	}
 
-	delete(codeHash: string): boolean {
-		return this.approvals.delete(codeHash);
+	delete(subject: PermissionApprovalSubject): boolean {
+		return this.approvals.delete(approvalStorageId(subject));
 	}
 
 	deleteOlderThan(cutoffTime: number): number {
 		let deletedCount = 0;
 
 		for (const approval of this.list()) {
-			if (approval.updatedAt < cutoffTime && this.delete(approval.codeHash)) {
+			if (approval.updatedAt < cutoffTime && this.delete(approval)) {
 				deletedCount += 1;
 			}
 		}

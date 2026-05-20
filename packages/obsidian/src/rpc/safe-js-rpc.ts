@@ -15,20 +15,24 @@ import { createWorkspaceMethods } from 'packages/obsidian/src/rpc/obsidian/works
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export function createSafeJsRpcRegistry(app: App): RpcRegistry {
-	return new RpcRegistry([
-		...createCoreMethods(app),
-		...createHelperMethods(),
-		...createVaultReadMethods(app),
-		...createMetadataMethods(app),
-		...createVaultCreateMethods(app),
-		...createVaultModifyMethods(app),
-		...createVaultMoveMethods(app),
-		...createVaultDeleteMethods(app),
-		...createWorkspaceMethods(app),
-		...createEditorMethods(app),
-		...createFileManagerMethods(app),
-		...createUiMethods(),
-		...createNetworkMethods(),
-		...createStorageMethods(app),
-	]);
+	return new RpcRegistry(
+		[
+			...createCoreMethods(app),
+			...createHelperMethods(),
+			...createVaultReadMethods(app),
+			...createMetadataMethods(app),
+			...createVaultCreateMethods(app),
+			...createVaultModifyMethods(app),
+			...createVaultMoveMethods(app),
+			...createVaultDeleteMethods(app),
+			...createWorkspaceMethods(app),
+			...createEditorMethods(app),
+			...createFileManagerMethods(app),
+			...createUiMethods(),
+			...createNetworkMethods(),
+			...createStorageMethods(app),
+		],
+		undefined,
+		{ getConfigDir: () => app.vault.configDir },
+	);
 }

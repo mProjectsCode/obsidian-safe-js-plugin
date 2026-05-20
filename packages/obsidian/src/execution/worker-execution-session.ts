@@ -173,6 +173,7 @@ export class WorkerExecutionSession {
 				executionId,
 				code: options.code,
 				rpcBindings: this.rpcRegistry.getWorkerBindings(),
+				sandboxGlobals: this.rpcRegistry.getSandboxGlobals(options.grantedPermissions),
 			});
 		});
 	}

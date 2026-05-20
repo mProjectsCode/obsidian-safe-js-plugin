@@ -14,8 +14,13 @@ interface ScriptStorageIndex {
 	keys: Record<string, { updatedAt: number }>;
 }
 
+interface ScriptStorageScopeIndex {
+	scopes: string[];
+}
+
 const STORAGE_PREFIX = 'safe-js:script-storage:v1:';
 const SCOPED_STORAGE_PREFIX = `${STORAGE_PREFIX}scoped:`;
+const SCOPE_INDEX_KEY = `${STORAGE_PREFIX}__scopes`;
 const scriptStorageIndexSchema: z.ZodType<ScriptStorageIndex> = z.object({
 	keys: z.record(
 		z.string(),
@@ -23,6 +28,9 @@ const scriptStorageIndexSchema: z.ZodType<ScriptStorageIndex> = z.object({
 			updatedAt: z.number(),
 		}),
 	),
+});
+const scriptStorageScopeIndexSchema: z.ZodType<ScriptStorageScopeIndex> = z.object({
+	scopes: z.array(z.string()),
 });
 
 export class ScriptStorageManager {
@@ -42,12 +50,14 @@ export class ScriptStorageManager {
 
 	set(key: string, value: JsonValue): void {
 		this.app.saveLocalStorage(this.storageKey(key), value);
+		this.trackScope();
 		this.upsertIndexEntry(key, this.now());
 	}
 
 	delete(key: string): void {
 		this.app.saveLocalStorage(this.storageKey(key), null);
 		this.removeIndexEntry(key);
+		this.pruneEmptyScope();
 	}
 
 	list(): ScriptStorageEntry[] {
@@ -84,6 +94,7 @@ export class ScriptStorageManager {
 		}
 
 		this.saveIndex({ keys: {} });
+		this.forgetScope();
 		return entries.length;
 	}
 
@@ -115,6 +126,17 @@ export class ScriptStorageManager {
 		this.app.saveLocalStorage(this.storageIndexKey(), index);
 	}
 
+	private loadScopeIndex(): ScriptStorageScopeIndex {
+		const rawIndex: unknown = this.app.loadLocalStorage(SCOPE_INDEX_KEY);
+		return scriptStorageScopeIndexSchema.safeParse(rawIndex).data ?? { scopes: [] };
+	}
+
+	private saveScopeIndex(index: ScriptStorageScopeIndex): void {
+		this.app.saveLocalStorage(SCOPE_INDEX_KEY, {
+			scopes: [...new Set(index.scopes)].sort(),
+		});
+	}
+
 	private upsertIndexEntry(key: string, updatedAt: number): void {
 		const index = this.loadIndex();
 		index.keys[key] = { updatedAt };
@@ -125,6 +147,32 @@ export class ScriptStorageManager {
 		const index = this.loadIndex();
 		delete index.keys[key];
 		this.saveIndex(index);
+	}
+
+	private trackScope(): void {
+		if (this.scope === null) {
+			return;
+		}
+
+		const scopeIndex = this.loadScopeIndex();
+		this.saveScopeIndex({ scopes: [...scopeIndex.scopes, this.scope] });
+	}
+
+	private pruneEmptyScope(): void {
+		if (this.scope === null || this.list().length > 0) {
+			return;
+		}
+
+		this.forgetScope();
+	}
+
+	private forgetScope(): void {
+		if (this.scope === null) {
+			return;
+		}
+
+		const scopeIndex = this.loadScopeIndex();
+		this.saveScopeIndex({ scopes: scopeIndex.scopes.filter(scope => scope !== this.scope) });
 	}
 
 	private storageIndexKey(): string {
@@ -140,7 +188,8 @@ export class ScriptStorageManager {
 	}
 
 	private static createKnownManagers(app: App, now: () => number): ScriptStorageManager[] {
-		return [new ScriptStorageManager(app, now)];
+		const scopeIndex = scriptStorageScopeIndexSchema.safeParse(app.loadLocalStorage(SCOPE_INDEX_KEY)).data ?? { scopes: [] };
+		return [new ScriptStorageManager(app, now), ...[...new Set(scopeIndex.scopes)].sort().map(scope => new ScriptStorageManager(app, now, scope))];
 	}
 }
 

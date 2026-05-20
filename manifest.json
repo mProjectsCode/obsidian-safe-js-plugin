@@ -3,7 +3,7 @@
 	"name": "Safe JS",
 	"version": "0.1.3",
 	"minAppVersion": "1.12.3",
-	"description": "Run note-owned JavaScript through sandboxed Web Workers and a limited RPC surface.",
+	"description": "Run JavaScript through sandboxed Web Workers and a limited RPC surface.",
 	"author": "Moritz Jung",
 	"authorUrl": "https://www.moritzjung.dev/",
 	"fundingUrl": "https://github.com/sponsors/mProjectsCode",

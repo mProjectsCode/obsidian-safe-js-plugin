@@ -51,12 +51,26 @@ export class SafeJsDocsView extends ItemView {
 		section.createEl('p', { text: `${group.permission.id} - ${formatSeverity(group.permission.severity)}` });
 		section.createEl('p', { text: group.permission.description });
 		section.createEl('p', { text: group.permission.grantGuidance });
+		if (group.ownerPluginName !== undefined) {
+			section.createEl('p', { text: `Provided by ${group.ownerPluginName}.` });
+		}
 
-		const list = section.createEl('ul');
-		for (const rpcMethod of group.methods) {
-			const item = list.createEl('li');
-			item.createEl('code', { text: rpcMethod.usage });
-			item.createSpan({ text: ` - ${rpcMethod.description}` });
+		if (group.methods.length > 0) {
+			const list = section.createEl('ul');
+			for (const rpcMethod of group.methods) {
+				const item = list.createEl('li');
+				item.createEl('code', { text: rpcMethod.usage });
+				item.createSpan({ text: ` - ${rpcMethod.description}` });
+			}
+		}
+
+		if (group.globals.length > 0) {
+			const list = section.createEl('ul');
+			for (const globalDefinition of group.globals) {
+				const item = list.createEl('li');
+				item.createEl('code', { text: globalDefinition.name });
+				item.createSpan({ text: ` - ${globalDefinition.description}` });
+			}
 		}
 	}
 

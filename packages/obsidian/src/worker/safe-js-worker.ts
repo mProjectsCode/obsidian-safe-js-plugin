@@ -95,13 +95,22 @@ function createApi(executionId: string, bindings: readonly WorkerRpcBinding[]): 
 
 async function executeUserCode(message: ExecuteWorkerMessage): Promise<void> {
 	const api = createApi(message.executionId, message.rpcBindings);
+	const sandboxGlobals: Record<string, unknown> = {
+		api,
+		console: safeConsole,
+	};
+
+	for (const global of message.sandboxGlobals) {
+		if (global.name === 'api' || global.name === 'console') {
+			throw new Error(`Sandbox global '${global.name}' is reserved.`);
+		}
+
+		sandboxGlobals[global.name] = sesHarden(global.value);
+	}
 
 	try {
 		const compartment = new SesCompartment({
-			globals: sesHarden({
-				api,
-				console: safeConsole,
-			}),
+			globals: sesHarden(sandboxGlobals),
 			__options__: true,
 		});
 		const rawValue = (await compartment.evaluate(`"use strict";

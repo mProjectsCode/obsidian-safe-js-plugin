@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
-import { LocalStoragePermissionApprovalStore, LocalStoragePermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
+import {
+	LocalStoragePermissionApprovalStore,
+	LocalStoragePermissionSettingsStore,
+	MemoryPermissionStorage,
+} from 'packages/obsidian/src/permissions/approval-store';
 import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
 
 test('parses contiguous leading permission comments', () => {
@@ -43,14 +47,9 @@ test('expands permission groups against known permissions', () => {
 	expect(() => expandPermissionGroups(['network:*'], new Set(['vault:read']))).toThrow("Unknown permission group 'network:*'");
 });
 
-test('stores approvals in localStorage-compatible storage keyed by code hash', () => {
-	const values = new Map<string, string>();
-	const store = new LocalStoragePermissionApprovalStore({
-		getItem: key => values.get(key) ?? null,
-		setItem: (key, value) => {
-			values.set(key, value);
-		},
-	});
+test('stores approvals in app-local storage keyed by code hash', () => {
+	const storage = new MemoryPermissionStorage();
+	const store = new LocalStoragePermissionApprovalStore(storage);
 
 	store.save({
 		codeHash: 'hash-a',
@@ -58,50 +57,28 @@ test('stores approvals in localStorage-compatible storage keyed by code hash', (
 		updatedAt: 42,
 	});
 
-	expect(store.load('hash-a')).toEqual({
+	expect(store.load({ codeHash: 'hash-a' })).toEqual({
 		codeHash: 'hash-a',
 		permissions: ['vault:read'],
 		updatedAt: 42,
 	});
-	expect(store.load('hash-b')).toBeNull();
-	expect([...values.keys()]).toEqual(['safe-js:permissions:v1:hash-a']);
+	expect(store.load({ codeHash: 'hash-b' })).toBeNull();
+	expect(storage.keys()).toEqual(['safe-js:permissions:v1:hash-a']);
 });
 
-test('stores auto-allow low-risk permission setting in localStorage-compatible storage', () => {
-	const values = new Map<string, string>();
-	const store = new LocalStoragePermissionSettingsStore({
-		getItem: key => values.get(key) ?? null,
-		setItem: (key, value) => {
-			values.set(key, value);
-		},
-	});
+test('stores auto-allow low-risk permission setting in app-local storage', () => {
+	const storage = new MemoryPermissionStorage();
+	const store = new LocalStoragePermissionSettingsStore(storage);
 
 	expect(store.loadAutoAllowLowRiskPermissions()).toBe(false);
 	store.saveAutoAllowLowRiskPermissions(true);
 
 	expect(store.loadAutoAllowLowRiskPermissions()).toBe(true);
-	expect([...values.entries()]).toEqual([['safe-js:settings:v1:auto-allow-low-risk-permissions', 'true']]);
+	expect(storage.get('safe-js:settings:v1:auto-allow-low-risk-permissions')).toBe(true);
 });
 
 test('lists and prunes stored permission approvals', () => {
-	const values = new Map<string, string>();
-	const storage = {
-		get length(): number {
-			return values.size;
-		},
-		getItem(key: string): string | null {
-			return values.get(key) ?? null;
-		},
-		key(index: number): string | null {
-			return [...values.keys()][index] ?? null;
-		},
-		removeItem(key: string): void {
-			values.delete(key);
-		},
-		setItem(key: string, value: string): void {
-			values.set(key, value);
-		},
-	};
+	const storage = new MemoryPermissionStorage();
 	const store = new LocalStoragePermissionApprovalStore(storage);
 
 	store.save({ codeHash: 'old-hash', permissions: ['vault:read'], updatedAt: 10 });
@@ -109,6 +86,6 @@ test('lists and prunes stored permission approvals', () => {
 
 	expect(store.list().map(approval => approval.codeHash)).toEqual(['new-hash', 'old-hash']);
 	expect(store.deleteOlderThan(50)).toBe(1);
-	expect(store.load('old-hash')).toBeNull();
-	expect(store.load('new-hash')?.permissions).toEqual(['storage:read']);
+	expect(store.load({ codeHash: 'old-hash' })).toBeNull();
+	expect(store.load({ codeHash: 'new-hash' })?.permissions).toEqual(['storage:read']);
 });

@@ -1,7 +1,18 @@
-import type { JsonValue, WorkerRpcBinding } from 'packages/obsidian/src/execution/contracts';
+import type { JsonValue, WorkerRpcBinding, WorkerSandboxGlobal } from 'packages/obsidian/src/execution/contracts';
+import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import type { PermissionDefinition, PermissionId } from 'packages/obsidian/src/permissions/permissions';
 import { PERMISSION_DEFINITIONS, getPermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
-import { z } from 'zod';
+import type {
+	BuiltInValidatorOptions,
+	SafeJsRegistration,
+	SafeJsValidationContext,
+	SafeJsValidationResult,
+	SafeJsValidator,
+	SafeJsValidatorReference,
+} from 'packages/obsidian/src/rpc/validators';
+import { ValidatorRegistry, createBuiltInValidators } from 'packages/obsidian/src/rpc/validators';
+
+export type { SafeJsRegistration } from 'packages/obsidian/src/rpc/validators';
 
 export interface RpcContext {
 	grantedPermissions: ReadonlySet<PermissionId>;
@@ -29,10 +40,22 @@ export interface RpcMethodDefinition<TParams = unknown, TResult = unknown> {
 	permission: PermissionId;
 	description: string;
 	usage: string;
-	requestSchema: z.ZodType<TParams>;
-	responseSchema: z.ZodType<TResult>;
+	requestValidator: SafeJsValidatorReference<TParams>;
+	responseValidator: SafeJsValidatorReference<TResult>;
 	binding: Omit<WorkerRpcBinding, 'method' | 'permission'>;
 	handler(params: TParams, context: RpcContext): Promise<TResult> | TResult;
+}
+
+export interface RpcRegistrationOwner {
+	pluginId?: string;
+	pluginName?: string;
+}
+
+export interface SandboxGlobalRegistration {
+	name: string;
+	description: string;
+	value: JsonValue;
+	permission?: PermissionId;
 }
 
 export interface RpcDocsMethod {
@@ -41,18 +64,42 @@ export interface RpcDocsMethod {
 	description: string;
 	usage: string;
 	permission: PermissionId;
+	ownerPluginId?: string;
+	ownerPluginName?: string;
 }
 
 export interface RpcDocsPermission {
 	permission: PermissionDefinition;
 	methods: RpcDocsMethod[];
+	globals: RpcDocsGlobal[];
+	ownerPluginId?: string;
+	ownerPluginName?: string;
+}
+
+export interface RpcDocsGlobal {
+	name: string;
+	description: string;
+	permission?: PermissionId;
+	ownerPluginId?: string;
+	ownerPluginName?: string;
 }
 
 export class RpcRegistry {
 	private readonly methods = new Map<string, RpcMethodDefinition<unknown, unknown>>();
 	private readonly permissionDefinitions = new Map<PermissionId, PermissionDefinition>();
+	private readonly validators: ValidatorRegistry;
+	private readonly methodOwners = new Map<string, RpcRegistrationOwner>();
+	private readonly permissionOwners = new Map<PermissionId, RpcRegistrationOwner>();
+	private readonly sandboxGlobals = new Map<string, SandboxGlobalRegistration>();
+	private readonly sandboxGlobalOwners = new Map<string, RpcRegistrationOwner>();
 
-	constructor(methods: readonly RpcMethodDefinition[] = [], permissionDefinitions: readonly PermissionDefinition[] = PERMISSION_DEFINITIONS) {
+	constructor(
+		methods: readonly RpcMethodDefinition[] = [],
+		permissionDefinitions: readonly PermissionDefinition[] = PERMISSION_DEFINITIONS,
+		validatorOptions: BuiltInValidatorOptions | readonly SafeJsValidator[],
+	) {
+		this.validators = new ValidatorRegistry(isValidatorList(validatorOptions) ? validatorOptions : createBuiltInValidators(validatorOptions));
+
 		for (const permission of permissionDefinitions) {
 			this.permissionDefinitions.set(permission.id, permission);
 		}
@@ -62,9 +109,17 @@ export class RpcRegistry {
 		}
 	}
 
-	register(method: RpcMethodDefinition<unknown, unknown>): void {
+	register(method: RpcMethodDefinition<unknown, unknown>, owner: RpcRegistrationOwner = {}): void {
 		if (this.methods.has(method.method)) {
 			throw new Error(`Duplicate RPC method '${method.method}'.`);
+		}
+
+		const existingBinding = [...this.methods.values()].find(
+			registeredMethod =>
+				registeredMethod.binding.namespace === method.binding.namespace && registeredMethod.binding.functionName === method.binding.functionName,
+		);
+		if (existingBinding !== undefined) {
+			throw new Error(`Duplicate sandbox API path 'api.${method.binding.namespace}.${method.binding.functionName}'.`);
 		}
 
 		if (!this.permissionDefinitions.has(method.permission)) {
@@ -74,13 +129,116 @@ export class RpcRegistry {
 			}
 		}
 
+		this.assertKnownValidator(method.requestValidator, method.method, 'request');
+		this.assertKnownValidator(method.responseValidator, method.method, 'response');
+
 		this.methods.set(method.method, method);
+		this.methodOwners.set(method.method, owner);
+	}
+
+	registerPermission(permission: PermissionDefinition, owner: RpcRegistrationOwner = {}): SafeJsRegistration {
+		if (this.permissionDefinitions.has(permission.id)) {
+			throw new Error(`Duplicate permission '${permission.id}'.`);
+		}
+
+		this.permissionDefinitions.set(permission.id, permission);
+		this.permissionOwners.set(permission.id, owner);
+
+		return {
+			unregister: (): void => {
+				if ([...this.methods.values()].some(method => method.permission === permission.id)) {
+					throw new Error(`Cannot unregister permission '${permission.id}' while RPC methods still use it.`);
+				}
+				if ([...this.sandboxGlobals.values()].some(global => global.permission === permission.id)) {
+					throw new Error(`Cannot unregister permission '${permission.id}' while sandbox globals still use it.`);
+				}
+
+				this.permissionDefinitions.delete(permission.id);
+				this.permissionOwners.delete(permission.id);
+			},
+		};
+	}
+
+	registerMethod(method: RpcMethodDefinition<unknown, unknown>, owner: RpcRegistrationOwner = {}): SafeJsRegistration {
+		this.register(method, owner);
+
+		return {
+			unregister: (): void => {
+				this.methods.delete(method.method);
+				this.methodOwners.delete(method.method);
+			},
+		};
+	}
+
+	validate<T = unknown>(validator: SafeJsValidatorReference<T>, value: unknown, context: SafeJsValidationContext = {}): SafeJsValidationResult<T> {
+		return this.validators.validate(validator, value, context);
+	}
+
+	getValidatorIds(): string[] {
+		return this.validators.getIds();
+	}
+
+	registerSandboxGlobal(global: SandboxGlobalRegistration, owner: RpcRegistrationOwner = {}): SafeJsRegistration {
+		if (this.sandboxGlobals.has(global.name)) {
+			throw new Error(`Duplicate sandbox global '${global.name}'.`);
+		}
+
+		if (global.name === 'api' || global.name === 'console') {
+			throw new Error(`Sandbox global '${global.name}' is reserved.`);
+		}
+
+		if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(global.name)) {
+			throw new Error(`Invalid sandbox global name '${global.name}'.`);
+		}
+
+		if (global.permission !== undefined && !this.permissionDefinitions.has(global.permission)) {
+			throw new Error(`Unknown permission '${global.permission}' for sandbox global '${global.name}'.`);
+		}
+
+		const valueResult = jsonValueSchema.safeParse(global.value);
+		if (!valueResult.success) {
+			throw new Error(`Sandbox global '${global.name}' must be JSON-safe.`);
+		}
+
+		this.sandboxGlobals.set(global.name, global);
+		this.sandboxGlobalOwners.set(global.name, owner);
+
+		return {
+			unregister: (): void => {
+				this.sandboxGlobals.delete(global.name);
+				this.sandboxGlobalOwners.delete(global.name);
+			},
+		};
+	}
+
+	unregisterOwner(pluginId: string): void {
+		for (const [methodName, owner] of this.methodOwners) {
+			if (owner.pluginId === pluginId) {
+				this.methods.delete(methodName);
+				this.methodOwners.delete(methodName);
+			}
+		}
+
+		for (const [globalName, owner] of this.sandboxGlobalOwners) {
+			if (owner.pluginId === pluginId) {
+				this.sandboxGlobals.delete(globalName);
+				this.sandboxGlobalOwners.delete(globalName);
+			}
+		}
+
+		for (const [permission, owner] of this.permissionOwners) {
+			if (owner.pluginId === pluginId && !this.hasMethodsForPermission(permission) && !this.hasSandboxGlobalsForPermission(permission)) {
+				this.permissionDefinitions.delete(permission);
+				this.permissionOwners.delete(permission);
+			}
+		}
 	}
 
 	getKnownPermissions(): ReadonlySet<PermissionId> {
 		return new Set([
 			...[...this.permissionDefinitions.keys()].filter(permission => this.hasMethodsForPermission(permission)),
 			...[...this.methods.values()].map(method => method.permission),
+			...[...this.sandboxGlobals.values()].flatMap(global => (global.permission === undefined ? [] : [global.permission])),
 		]);
 	}
 
@@ -95,6 +253,15 @@ export class RpcRegistry {
 		}));
 	}
 
+	getSandboxGlobals(grantedPermissions: ReadonlySet<PermissionId>): WorkerSandboxGlobal[] {
+		return [...this.sandboxGlobals.values()]
+			.filter(global => global.permission === undefined || grantedPermissions.has(global.permission))
+			.map(global => ({
+				name: global.name,
+				value: global.value,
+			}));
+	}
+
 	getDocs(): RpcDocsPermission[] {
 		const docs = [...this.permissionDefinitions.values()]
 			.map(permission => ({
@@ -107,10 +274,24 @@ export class RpcRegistry {
 						description: method.description,
 						usage: method.usage,
 						permission: method.permission,
+						ownerPluginId: this.methodOwners.get(method.method)?.pluginId,
+						ownerPluginName: this.methodOwners.get(method.method)?.pluginName,
 					}))
 					.sort((left, right) => left.apiPath.localeCompare(right.apiPath)),
+				globals: [...this.sandboxGlobals.values()]
+					.filter(global => global.permission === permission.id)
+					.map(global => ({
+						name: global.name,
+						description: global.description,
+						permission: global.permission,
+						ownerPluginId: this.sandboxGlobalOwners.get(global.name)?.pluginId,
+						ownerPluginName: this.sandboxGlobalOwners.get(global.name)?.pluginName,
+					}))
+					.sort((left, right) => left.name.localeCompare(right.name)),
+				ownerPluginId: this.permissionOwners.get(permission.id)?.pluginId,
+				ownerPluginName: this.permissionOwners.get(permission.id)?.pluginName,
 			}))
-			.filter(group => group.methods.length > 0);
+			.filter(group => group.methods.length > 0 || group.globals.length > 0);
 
 		return docs.sort((left, right) => left.permission.id.localeCompare(right.permission.id));
 	}
@@ -151,26 +332,32 @@ export class RpcRegistry {
 			};
 		}
 
-		const requestResult = method.requestSchema.safeParse(params);
+		const requestResult = this.validators.validate(method.requestValidator, params, {
+			method: methodName,
+			direction: 'request',
+		});
 		if (!requestResult.success) {
 			return {
 				ok: false,
 				error: {
 					code: 'invalid-rpc-request',
-					message: `Invalid request for RPC method '${methodName}': ${z.prettifyError(requestResult.error)}`,
+					message: `Invalid request for RPC method '${methodName}': ${requestResult.message}`,
 				},
 			};
 		}
 
 		try {
 			const rawResult = await method.handler(requestResult.data, context);
-			const responseResult = method.responseSchema.safeParse(rawResult);
+			const responseResult = this.validators.validate(method.responseValidator, rawResult, {
+				method: methodName,
+				direction: 'response',
+			});
 			if (!responseResult.success) {
 				return {
 					ok: false,
 					error: {
 						code: 'invalid-rpc-response',
-						message: `RPC method '${methodName}' returned an invalid response: ${z.prettifyError(responseResult.error)}`,
+						message: `RPC method '${methodName}' returned an invalid response: ${responseResult.message}`,
 					},
 				};
 			}
@@ -193,4 +380,18 @@ export class RpcRegistry {
 	private hasMethodsForPermission(permission: PermissionId): boolean {
 		return [...this.methods.values()].some(method => method.permission === permission);
 	}
+
+	private hasSandboxGlobalsForPermission(permission: PermissionId): boolean {
+		return [...this.sandboxGlobals.values()].some(global => global.permission === permission);
+	}
+
+	private assertKnownValidator(reference: SafeJsValidatorReference<unknown>, methodName: string, direction: 'request' | 'response'): void {
+		if (typeof reference === 'string' && !this.validators.has(reference)) {
+			throw new Error(`Unknown ${direction} validator '${reference}' for RPC method '${methodName}'.`);
+		}
+	}
+}
+
+function isValidatorList(value: BuiltInValidatorOptions | readonly SafeJsValidator[]): value is readonly SafeJsValidator[] {
+	return Array.isArray(value);
 }

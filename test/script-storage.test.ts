@@ -47,6 +47,7 @@ test('separates scoped storage from global storage', () => {
 
 	expect(globalStorage.get('shared-key')).toBe('global');
 	expect(scopedStorage.get('shared-key')).toBe('scoped');
+	expect(ScriptStorageManager.listAll(app).map(entry => `${entry.scope ?? 'global'}:${entry.key}`)).toEqual(['hash:a:shared-key', 'global:shared-key']);
 	expect(scopedScriptStorageKey('hash:a', 'shared-key')).toBe('safe-js:script-storage:v1:scoped:hash%3Aa:shared-key');
 });
 
@@ -57,5 +58,6 @@ test('uses the stable Safe JS script storage prefix', () => {
 test('rejects reserved storage keys that can cross storage scopes', () => {
 	expect(storageKeySchema.safeParse('regular-key').success).toBe(true);
 	expect(storageKeySchema.safeParse('__index').success).toBe(false);
+	expect(storageKeySchema.safeParse('__scopes').success).toBe(false);
 	expect(storageKeySchema.safeParse('scoped:hash:key').success).toBe(false);
 });

@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'bun:test';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
+const testValidatorOptions = {
+	getConfigDir: (): string => '.obsidian',
+};
+
 mock.module('obsidian', () => ({
 	TFile: class TFile {},
 	TFolder: class TFolder {},
@@ -41,7 +45,7 @@ mock.module('obsidian', () => ({
 
 async function createRegistry(): Promise<RpcRegistry> {
 	const { createHelperMethods } = await import('packages/obsidian/src/rpc/obsidian/helper-rpc');
-	return new RpcRegistry(createHelperMethods());
+	return new RpcRegistry(createHelperMethods(), undefined, testValidatorOptions);
 }
 
 test('registers helper methods under the helper permission', async () => {

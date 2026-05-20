@@ -2,7 +2,7 @@ import type { SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obs
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import type { ActiveExecution } from 'packages/obsidian/src/execution/worker-execution-session';
 import { WorkerExecutionSession } from 'packages/obsidian/src/execution/worker-execution-session';
-import type { PermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
+import type { PermissionApprovalStore, PermissionApprovalSubject } from 'packages/obsidian/src/permissions/approval-store';
 import { hashCode } from 'packages/obsidian/src/permissions/hash';
 import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
@@ -10,6 +10,8 @@ import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export interface PermissionPromptRequest {
 	codeHash: string;
+	callerPluginId?: string;
+	callerPluginName?: string;
 	permissions: PermissionId[];
 	source?: SafeJsExecutionOptions['source'];
 	signal?: AbortSignal;
@@ -77,6 +79,10 @@ export class SafeJsExecutionService {
 	async execute(code: string, options: SafeJsExecutionOptions = {}): Promise<SafeJsExecutionResult> {
 		const startedAt = this.now();
 		const codeHash = await this.hashSource(code);
+		const approvalSubject: PermissionApprovalSubject = {
+			codeHash,
+			callerPluginId: options.source?.callerPluginId,
+		};
 		let permissions: PermissionId[] = [];
 
 		try {
@@ -94,7 +100,7 @@ export class SafeJsExecutionService {
 			};
 		}
 
-		const approval = this.approvalStore.load(codeHash);
+		const approval = this.approvalStore.load(approvalSubject);
 		const approvedPermissions = new Set(approval?.permissions ?? []);
 		const missingPermissions = permissions.filter(permission => !approvedPermissions.has(permission));
 		const autoApprovedPermissions = this.getAutoAllowLowRiskPermissions()
@@ -105,6 +111,8 @@ export class SafeJsExecutionService {
 		if (promptedPermissions.length > 0) {
 			const approved = await this.permissionPrompt.requestApproval({
 				codeHash,
+				callerPluginId: options.source?.callerPluginId,
+				callerPluginName: options.source?.callerPluginName,
 				permissions: promptedPermissions,
 				source: options.source,
 				signal: options.signal,
@@ -133,6 +141,7 @@ export class SafeJsExecutionService {
 		if (newlyApprovedPermissions.length > 0) {
 			this.approvalStore.save({
 				codeHash,
+				callerPluginId: approvalSubject.callerPluginId,
 				permissions: [...new Set([...approvedPermissions, ...newlyApprovedPermissions])],
 				updatedAt: this.now(),
 			});

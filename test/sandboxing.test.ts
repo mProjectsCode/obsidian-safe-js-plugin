@@ -1,12 +1,15 @@
 import { expect, test } from 'bun:test';
 import '@happy-dom/global-registrator';
-import { z } from 'zod';
 import { executeWorkerMessageSchema, hostRpcResponseMessageSchema, workerToHostMessageSchema } from 'packages/obsidian/src/execution/contracts';
 import type { HostWorkerMessage, WorkerClient, WorkerClientMessage, WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import { WorkerExecutionSession } from 'packages/obsidian/src/execution/worker-execution-session';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 import { SANDBOX_GLOBALS } from 'packages/obsidian/src/execution/sandbox-globals';
 import { SesCompartment, sesHarden } from 'packages/obsidian/src/worker/ses-runtime';
+
+const testValidatorOptions = {
+	getConfigDir: (): string => '.obsidian',
+};
 
 class RecordingWorker implements WorkerClient {
 	private messageListener: ((message: WorkerClientMessage) => void) | null = null;
@@ -68,25 +71,35 @@ function createSession(workerFactory: WorkerFactory, registry: RpcRegistry): Wor
 }
 
 function createRegistry(): RpcRegistry {
-	return new RpcRegistry([
-		{
-			method: 'vault:read',
-			permission: 'vault:read',
-			description: 'Read a file.',
-			usage: 'api.vault.read(path)',
-			requestSchema: z.object({ path: z.string() }),
-			responseSchema: z.string(),
-			binding: {
-				namespace: 'vault',
-				functionName: 'read',
-				paramStyle: 'path',
+	return new RpcRegistry(
+		[
+			{
+				method: 'vault:read',
+				permission: 'vault:read',
+				description: 'Read a file.',
+				usage: 'api.vault.read(path)',
+				requestValidator: 'rpc:pathParams',
+				responseValidator: value => {
+					if (typeof value === 'string') {
+						return { success: true, data: value };
+					}
+
+					return { success: false, message: 'Expected a string.' };
+				},
+				binding: {
+					namespace: 'vault',
+					functionName: 'read',
+					paramStyle: 'path',
+				},
+				handler: params => {
+					const request = params as { path: string };
+					return `read:${request.path}`;
+				},
 			},
-			handler: params => {
-				const request = params as { path: string };
-				return `read:${request.path}`;
-			},
-		},
-	]);
+		],
+		undefined,
+		testValidatorOptions,
+	);
 }
 
 test('sandbox global documentation only advertises the intentional host surface', () => {
@@ -193,6 +206,7 @@ test('worker execute messages only include RPC binding metadata, not host app ob
 				paramStyle: 'path',
 			},
 		],
+		sandboxGlobals: [],
 	});
 
 	workerFactory.worker.emitMessage({
@@ -202,6 +216,76 @@ test('worker execute messages only include RPC binding metadata, not host app ob
 		value: null,
 	});
 	await resultPromise;
+});
+
+test('worker execute messages include only granted sandbox globals', async () => {
+	const registry = createRegistry();
+	registry.registerPermission({
+		id: 'plugin:global',
+		name: 'Plugin globals',
+		description: 'Read plugin globals.',
+		severity: 'medium',
+		grantGuidance: 'Grant for plugin globals.',
+	});
+	registry.registerSandboxGlobal({
+		name: 'pluginData',
+		description: 'Plugin data.',
+		permission: 'plugin:global',
+		value: { enabled: true },
+	});
+	registry.registerSandboxGlobal({
+		name: 'publicData',
+		description: 'Public data.',
+		value: { version: 1 },
+	});
+	const workerFactory = new RecordingWorkerFactory();
+	const session = createSession(workerFactory, registry);
+	const resultPromise = session.execute({
+		code: 'return 1;',
+		codeHash: 'hash-a',
+		executionOptions: {},
+		grantedPermissions: new Set(['vault:read']),
+		startedAt: 100,
+		timeoutMs: null,
+	});
+
+	const executeMessage = executeWorkerMessageSchema.parse(workerFactory.worker.postedMessages[0]);
+	expect(executeMessage.sandboxGlobals).toEqual([{ name: 'publicData', value: { version: 1 } }]);
+
+	workerFactory.worker.emitMessage({
+		type: 'execution-result',
+		executionId: 'exec-1',
+		ok: true,
+		value: null,
+	});
+	await resultPromise;
+});
+
+test('hardened custom sandbox globals cannot be mutated by user code', () => {
+	const compartment = new SesCompartment({
+		globals: sesHarden({
+			pluginData: sesHarden({ settings: { enabled: true } }),
+		}),
+		__options__: true,
+	});
+
+	const result = compartment.evaluate(`(() => {
+		try {
+			pluginData.settings.enabled = false;
+		} catch {}
+		try {
+			pluginData.extra = true;
+		} catch {}
+		return {
+			enabled: pluginData.settings.enabled,
+			hasExtra: 'extra' in pluginData,
+		};
+	})()`);
+
+	expect(result).toEqual({
+		enabled: true,
+		hasExtra: false,
+	});
 });
 
 test('worker session rejects malformed and cross-execution worker messages', async () => {

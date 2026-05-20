@@ -12,6 +12,13 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
+export const workerSandboxGlobalSchema = z.object({
+	name: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/u),
+	value: jsonValueSchema,
+});
+
+export type WorkerSandboxGlobal = z.infer<typeof workerSandboxGlobalSchema>;
+
 export const workerRpcBindingSchema = z.object({
 	method: z.string().min(1),
 	namespace: z.string().min(1),
@@ -28,6 +35,7 @@ export const executeWorkerMessageSchema = z.object({
 	executionId: z.string().min(1),
 	code: z.string(),
 	rpcBindings: z.array(workerRpcBindingSchema),
+	sandboxGlobals: z.array(workerSandboxGlobalSchema).default([]),
 });
 
 export type ExecuteWorkerMessage = z.infer<typeof executeWorkerMessageSchema>;
@@ -112,6 +120,7 @@ export interface SafeJsExecutionSource {
 	path?: string;
 	lineStart?: number;
 	callerPluginId?: string;
+	callerPluginName?: string;
 }
 
 export interface SafeJsExecutionOptions {

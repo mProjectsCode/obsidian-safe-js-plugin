@@ -1,26 +1,29 @@
 import { MarkdownRenderChild } from 'obsidian';
 import type { SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
+import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
 
-export function registerSafeJsMarkdownProcessors(plugin: SafeJsPlugin): void {
+export function registerSafeJsMarkdownProcessors(plugin: SafeJsPlugin, executionService: SafeJsExecutionService): void {
 	plugin.registerMarkdownCodeBlockProcessor('safe-js', (source, element, context) => {
-		context.addChild(new SafeJsBlockExecutionChild(plugin, source, element, context.sourcePath, false));
+		context.addChild(new SafeJsBlockExecutionChild(plugin, executionService, source, element, context.sourcePath, false));
 	});
 	plugin.registerMarkdownCodeBlockProcessor('safe-js-debug', (source, element, context) => {
-		context.addChild(new SafeJsBlockExecutionChild(plugin, source, element, context.sourcePath, true));
+		context.addChild(new SafeJsBlockExecutionChild(plugin, executionService, source, element, context.sourcePath, true));
 	});
 }
 
 class SafeJsBlockExecutionChild extends MarkdownRenderChild {
 	private readonly abortController = new AbortController();
 	private readonly debug: boolean;
+	private readonly executionService: SafeJsExecutionService;
 	private readonly plugin: SafeJsPlugin;
 	private readonly source: string;
 	private readonly sourcePath: string;
 
-	constructor(plugin: SafeJsPlugin, source: string, containerEl: HTMLElement, sourcePath: string, debug: boolean) {
+	constructor(plugin: SafeJsPlugin, executionService: SafeJsExecutionService, source: string, containerEl: HTMLElement, sourcePath: string, debug: boolean) {
 		super(containerEl);
 		this.plugin = plugin;
+		this.executionService = executionService;
 		this.source = source;
 		this.sourcePath = sourcePath;
 		this.debug = debug;
@@ -45,7 +48,7 @@ class SafeJsBlockExecutionChild extends MarkdownRenderChild {
 
 		outputElement.setText('Running safe js...');
 
-		const result = await this.plugin.api.execute(this.source, {
+		const result = await this.executionService.execute(this.source, {
 			debug: this.debug,
 			signal: this.abortController.signal,
 			source: {

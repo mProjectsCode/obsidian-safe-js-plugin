@@ -7,6 +7,7 @@ export const storageKeySchema = z
 	.max(200)
 	.regex(/^[a-zA-Z0-9._:-]+$/u)
 	.refine(key => key !== '__index', { message: 'Storage key is reserved.' })
+	.refine(key => key !== '__scopes', { message: 'Storage key is reserved.' })
 	.refine(key => !key.startsWith('scoped:'), { message: 'Storage key must not use the scoped storage namespace.' });
 
 export const storageValueSchema = jsonValueSchema.refine(value => JSON.stringify(value).length <= 200_000, {

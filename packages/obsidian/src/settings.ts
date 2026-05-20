@@ -2,7 +2,11 @@ import type { App } from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
 import type { PermissionApproval, PermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
-import { LocalStoragePermissionApprovalStore, LocalStoragePermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
+import {
+	AppPermissionStorage,
+	LocalStoragePermissionApprovalStore,
+	LocalStoragePermissionSettingsStore,
+} from 'packages/obsidian/src/permissions/approval-store';
 import type { ScriptStorageEntry } from 'packages/obsidian/src/storage/script-storage';
 import { ScriptStorageManager } from 'packages/obsidian/src/storage/script-storage';
 
@@ -20,13 +24,18 @@ export const DEFAULT_SETTINGS: SafeJsSettings = {
 
 export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
-	private readonly approvalStore = new LocalStoragePermissionApprovalStore();
+	private readonly approvalStore: LocalStoragePermissionApprovalStore;
 	private readonly permissionSettingsStore: PermissionSettingsStore;
 	private readonly staleEntryAgeMs = 30 * 24 * 60 * 60 * 1000;
 
-	constructor(app: App, plugin: SafeJsPlugin, permissionSettingsStore: PermissionSettingsStore = new LocalStoragePermissionSettingsStore()) {
+	constructor(
+		app: App,
+		plugin: SafeJsPlugin,
+		permissionSettingsStore: PermissionSettingsStore = new LocalStoragePermissionSettingsStore(new AppPermissionStorage(app)),
+	) {
 		super(app, plugin);
 		this.plugin = plugin;
+		this.approvalStore = new LocalStoragePermissionApprovalStore(new AppPermissionStorage(app));
 		this.permissionSettingsStore = permissionSettingsStore;
 	}
 
@@ -127,7 +136,9 @@ export class SafeJsSettingTab extends PluginSettingTab {
 		for (const approval of approvals.slice(0, 20)) {
 			const item = list.createEl('li');
 			item.createEl('code', { text: approval.codeHash });
-			item.createSpan({ text: ` - ${approval.permissions.join(', ')} - ${formatDate(approval.updatedAt)}` });
+			item.createSpan({
+				text: ` - ${formatCaller(approval.callerPluginId)} - ${approval.permissions.join(', ')} - ${formatDate(approval.updatedAt)}`,
+			});
 		}
 
 		if (approvals.length > 20) {
@@ -193,6 +204,10 @@ function formatBytes(bytes: number): string {
 	}
 
 	return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatCaller(callerPluginId: string | undefined): string {
+	return callerPluginId ?? 'notes';
 }
 
 function formatScope(scope: string | null): string {

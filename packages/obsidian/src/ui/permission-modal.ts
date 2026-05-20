@@ -56,9 +56,15 @@ class PermissionApprovalModal extends Modal {
 		contentEl.createEl('h2', { text: 'Allow safe js permissions?' });
 
 		const sourceText = this.request.source?.path ?? 'Unknown source';
+		const callerText = this.request.callerPluginName ?? this.request.callerPluginId;
 		contentEl.createEl('p', {
 			text: `This script is requesting access before it runs. Source: ${sourceText}`,
 		});
+		if (callerText !== undefined) {
+			contentEl.createEl('p', {
+				text: `Requested by ${callerText}.`,
+			});
+		}
 
 		if (this.hasNetworkExfiltrationRisk()) {
 			contentEl.createEl('p', {

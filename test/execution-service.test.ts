@@ -1,10 +1,26 @@
 import { expect, test } from 'bun:test';
-import { z } from 'zod';
 import { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
 import type { HostWorkerMessage, WorkerClient, WorkerClientMessage, WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import { MemoryPermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
+import type { SafeJsValidationResult } from 'packages/obsidian/src/rpc/validators';
+
+const testValidatorOptions = {
+	getConfigDir: (): string => '.obsidian',
+};
+
+interface EchoValue {
+	value: string;
+}
+
+function echoValueValidator(value: unknown): SafeJsValidationResult<EchoValue> {
+	if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
+		return { success: true, data: { value: value.value } };
+	}
+
+	return { success: false, message: 'Expected an object with a string value.' };
+}
 
 class FakePrompt implements PermissionPrompt {
 	requests: PermissionPromptRequest[] = [];
@@ -110,22 +126,26 @@ async function waitForWorker(workerFactory: { workers: unknown[] }): Promise<voi
 }
 
 function createRegistry(): RpcRegistry {
-	return new RpcRegistry([
-		{
-			method: 'test:echo',
-			permission: 'test:call',
-			description: 'Echo a test value.',
-			usage: 'api.test.echo({ value })',
-			requestSchema: z.object({ value: z.string() }),
-			responseSchema: z.object({ value: z.string() }),
-			binding: {
-				namespace: 'test',
-				functionName: 'echo',
-				paramStyle: 'object',
+	return new RpcRegistry(
+		[
+			{
+				method: 'test:echo',
+				permission: 'test:call',
+				description: 'Echo a test value.',
+				usage: 'api.test.echo({ value })',
+				requestValidator: echoValueValidator,
+				responseValidator: echoValueValidator,
+				binding: {
+					namespace: 'test',
+					functionName: 'echo',
+					paramStyle: 'object',
+				},
+				handler: params => params,
 			},
-			handler: params => params,
-		},
-	]);
+		],
+		undefined,
+		testValidatorOptions,
+	);
 }
 
 function createService(options: { promptApproved: boolean; store?: MemoryPermissionApprovalStore; workerFactory?: FakeWorkerFactory }) {
@@ -162,8 +182,8 @@ function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean })
 					permission: 'test:call',
 					description: 'Echo a test value.',
 					usage: 'api.test.echo({ value })',
-					requestSchema: z.object({ value: z.string() }),
-					responseSchema: z.object({ value: z.string() }),
+					requestValidator: echoValueValidator,
+					responseValidator: echoValueValidator,
 					binding: {
 						namespace: 'test',
 						functionName: 'echo',
@@ -181,6 +201,7 @@ function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean })
 					grantGuidance: 'Grant in tests.',
 				},
 			],
+			testValidatorOptions,
 		),
 		approvalStore: store,
 		permissionPrompt: prompt,
@@ -224,7 +245,7 @@ return await api.test.echo({ value: "x" });`;
 		permissions: ['test:call'],
 	});
 	expect(prompt.requests).toHaveLength(1);
-	expect(store.load(`hash:${code.length}`)?.permissions).toEqual(['test:call']);
+	expect(store.load({ codeHash: `hash:${code.length}` })?.permissions).toEqual(['test:call']);
 	expect(workerFactory.workers[0]?.terminated).toBe(true);
 });
 
@@ -245,6 +266,38 @@ return await api.test.echo({ value: "x" });`;
 	expect(prompt.requests).toHaveLength(0);
 });
 
+test('scopes stored approvals by caller plugin id', async () => {
+	const store = new MemoryPermissionApprovalStore();
+	const code = `// @permission test:call
+return await api.test.echo({ value: "x" });`;
+	const first = createService({ promptApproved: true, store });
+
+	const firstResult = await first.service.execute(code, {
+		source: {
+			callerPluginId: 'caller-a',
+		},
+	});
+	const secondResult = await first.service.execute(code, {
+		source: {
+			callerPluginId: 'caller-a',
+		},
+	});
+	const second = createService({ promptApproved: true, store });
+	const thirdResult = await second.service.execute(code, {
+		source: {
+			callerPluginId: 'caller-b',
+		},
+	});
+
+	expect(firstResult.status).toBe('success');
+	expect(secondResult.status).toBe('success');
+	expect(thirdResult.status).toBe('success');
+	expect(first.prompt.requests).toHaveLength(1);
+	expect(second.prompt.requests).toHaveLength(1);
+	expect(store.load({ codeHash: `hash:${code.length}`, callerPluginId: 'caller-a' })?.permissions).toEqual(['test:call']);
+	expect(store.load({ codeHash: `hash:${code.length}`, callerPluginId: 'caller-b' })?.permissions).toEqual(['test:call']);
+});
+
 test('expands permission groups before prompting and execution', async () => {
 	const { service, prompt, store } = createService({ promptApproved: true });
 	const code = `// @permission test:*
@@ -254,7 +307,7 @@ return await api.test.echo({ value: "x" });`;
 
 	expect(result.status).toBe('success');
 	expect(prompt.requests[0]?.permissions).toEqual(['test:call']);
-	expect(store.load(`hash:${code.length}`)?.permissions).toEqual(['test:call']);
+	expect(store.load({ codeHash: `hash:${code.length}` })?.permissions).toEqual(['test:call']);
 });
 
 test('auto-allows low-risk permissions when enabled', async () => {
@@ -266,7 +319,7 @@ return await api.test.echo({ value: "x" });`;
 
 	expect(result.status).toBe('success');
 	expect(prompt.requests).toHaveLength(0);
-	expect(store.load(`hash:${code.length}`)?.permissions).toEqual(['test:call']);
+	expect(store.load({ codeHash: `hash:${code.length}` })?.permissions).toEqual(['test:call']);
 });
 
 test('returns parse errors before creating a worker', async () => {
@@ -353,25 +406,29 @@ test('measures execution elapsed time after permission approval', async () => {
 	})(true);
 	const workerFactory = new FakeWorkerFactory();
 	const service = new SafeJsExecutionService({
-		rpcRegistry: new RpcRegistry([
-			{
-				method: 'test:echo',
-				permission: 'test:call',
-				description: 'Echo a test value.',
-				usage: 'api.test.echo({ value })',
-				requestSchema: z.object({ value: z.string() }),
-				responseSchema: z.object({ value: z.string() }),
-				binding: {
-					namespace: 'test',
-					functionName: 'echo',
-					paramStyle: 'object',
+		rpcRegistry: new RpcRegistry(
+			[
+				{
+					method: 'test:echo',
+					permission: 'test:call',
+					description: 'Echo a test value.',
+					usage: 'api.test.echo({ value })',
+					requestValidator: echoValueValidator,
+					responseValidator: echoValueValidator,
+					binding: {
+						namespace: 'test',
+						functionName: 'echo',
+						paramStyle: 'object',
+					},
+					handler: params => {
+						now = 1250;
+						return params;
+					},
 				},
-				handler: params => {
-					now = 1250;
-					return params;
-				},
-			},
-		]),
+			],
+			undefined,
+			testValidatorOptions,
+		),
 		approvalStore: new MemoryPermissionApprovalStore(),
 		permissionPrompt: prompt,
 		workerFactory,
