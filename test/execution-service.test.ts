@@ -231,6 +231,25 @@ return await api.test.echo({ value: "x" });`);
 	expect(workerFactory.workers).toHaveLength(0);
 });
 
+test('skip-missing approval mode returns permission-denied without prompting', async () => {
+	const { service, prompt, workerFactory } = createService({ promptApproved: true });
+
+	const result = await service.execute(
+		`// @permission test:call
+return 'ok';`,
+		{
+			approvalMode: 'skip-missing',
+		},
+	);
+
+	expect(result.status).toBe('permission-denied');
+	if (result.status !== 'success') {
+		expect(result.message).toBe('Execution skipped because permission approval is required for test:call.');
+	}
+	expect(prompt.requests).toHaveLength(0);
+	expect(workerFactory.workers).toHaveLength(0);
+});
+
 test('stores approvals and executes through the injected RPC registry', async () => {
 	const { service, prompt, workerFactory, store } = createService({ promptApproved: true });
 	const code = `// @permission test:call
@@ -307,6 +326,7 @@ return await api.test.echo({ value: "x" });`;
 
 	expect(result.status).toBe('success');
 	expect(prompt.requests[0]?.permissions).toEqual(['test:call']);
+	expect(prompt.requests[0]?.allPermissions).toEqual(['test:call']);
 	expect(store.load({ codeHash: `hash:${code.length}` })?.permissions).toEqual(['test:call']);
 });
 

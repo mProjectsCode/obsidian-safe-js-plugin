@@ -11,6 +11,8 @@ This plugin is currently highly experimental. There are no stability guarantees 
 ## Features
 
 - Run `safe-js` code blocks from notes.
+- Run explicitly configured vault `.js` files from commands.
+- Run selected vault scripts after the workspace layout is ready.
 - Enable optional `safe-js-debug` blocks for diagnostics.
 - Review permission prompts before a script runs.
 - Remember approvals per script source hash and caller plugin.
@@ -31,6 +33,25 @@ await api.ui.notify("Hello from Safe JS");
 ````
 
 Use `safe-js-debug` when debug blocks are enabled in settings.
+
+Code blocks render plain strings as text. They can also return a typed output object:
+
+```js
+// @permission output:render-rich
+
+return {
+	format: 'markdown',
+	content: '## Rendered by Safe JS',
+};
+```
+
+Supported formats are `text`, `markdown`, and `html`. Markdown and HTML output require `output:render-rich`; without that permission Safe JS displays a plain-text blocked message instead. HTML output is passed through Obsidian's `sanitizeHTMLToDom` before it is displayed.
+
+## Vault scripts
+
+Add vault `.js` files in **Settings → Safe JS → Vault scripts**. Each configured script gets a command named **Run script: <name>**. Scripts run through the same worker sandbox, permission comments, timeout settings, and approval flow as code blocks.
+
+Startup scripts run after Obsidian reports the layout is ready. They do not open permission prompts during startup. If a startup script needs permissions that have not already been approved for its current source hash, Safe JS skips it and shows a notice. Run the script manually once to review and approve its permissions.
 
 ## Permissions
 
@@ -53,7 +74,7 @@ Execution timeouts are enabled by default. You can disable them in settings when
 
 In Obsidian, run **Open API docs** to view the available permissions and `api.*` functions.
 
-Current API groups include vault, metadata, workspace, editor, file manager, UI, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method.
+Current API groups include vault, metadata, workspace, editor, file manager, UI, output, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method or host-side permission.
 
 ## Plugin Integration
 
@@ -75,6 +96,8 @@ Built-in validator IDs include `json:value`, `json:record`, `rpc:emptyParams`, `
 Network requests are only available to scripts that declare and receive approval for `network:request`. The plugin does not fetch or execute remote code, and it does not auto-update outside normal plugin releases. See [SECURITY.md](SECURITY.md) for the full security policy.
 
 Do not trust the sandbox to be perfect. Review scripts before you run them, only approve permissions you understand, and treat code from other people as untrusted even when it runs through Safe JS.
+
+Rendered Markdown and HTML can cause Obsidian or the browser to load remote resources, such as images. Safe JS therefore requires `output:render-rich` before rendering script results as Markdown or HTML. The same class of issue can happen through vault writes: a script with `vault:create`, `vault:modify`, or editor write access can write Markdown or HTML that later loads remote resources when you open or preview the file. Treat write permissions as capable of creating content that phones home when rendered.
 
 Vault read and write APIs reject paths inside the active Obsidian configuration folder, including custom config folder names reported by Obsidian.
 

@@ -236,7 +236,9 @@ export class RpcRegistry {
 
 	getKnownPermissions(): ReadonlySet<PermissionId> {
 		return new Set([
-			...[...this.permissionDefinitions.keys()].filter(permission => this.hasMethodsForPermission(permission)),
+			...[...this.permissionDefinitions.values()]
+				.filter(permission => permission.standalone === true || this.hasMethodsForPermission(permission.id))
+				.map(permission => permission.id),
 			...[...this.methods.values()].map(method => method.permission),
 			...[...this.sandboxGlobals.values()].flatMap(global => (global.permission === undefined ? [] : [global.permission])),
 		]);
@@ -291,7 +293,7 @@ export class RpcRegistry {
 				ownerPluginId: this.permissionOwners.get(permission.id)?.pluginId,
 				ownerPluginName: this.permissionOwners.get(permission.id)?.pluginName,
 			}))
-			.filter(group => group.methods.length > 0 || group.globals.length > 0);
+			.filter(group => group.permission.standalone === true || group.methods.length > 0 || group.globals.length > 0);
 
 		return docs.sort((left, right) => left.permission.id.localeCompare(right.permission.id));
 	}

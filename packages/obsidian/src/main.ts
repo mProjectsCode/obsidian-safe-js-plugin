@@ -10,14 +10,16 @@ import {
 import type { SafeJsPublicApi } from 'packages/obsidian/src/public-api/safe-js-public-api';
 import { DefaultSafeJsPublicApi } from 'packages/obsidian/src/public-api/safe-js-public-api';
 import { createSafeJsRpcRegistry } from 'packages/obsidian/src/rpc/safe-js-rpc';
+import { VaultScriptManager } from 'packages/obsidian/src/scripts/vault-script-manager';
 import type { SafeJsSettings } from 'packages/obsidian/src/settings';
-import { DEFAULT_SETTINGS, SafeJsSettingTab } from 'packages/obsidian/src/settings';
+import { normalizeSafeJsSettings, SafeJsSettingTab } from 'packages/obsidian/src/settings';
 import { SAFE_JS_DOCS_VIEW_TYPE, SafeJsDocsView } from 'packages/obsidian/src/ui/docs-view';
 import { ObsidianPermissionPrompt } from 'packages/obsidian/src/ui/permission-modal';
 
 export default class SafeJsPlugin extends Plugin {
 	api!: SafeJsPublicApi;
 	private executionService!: SafeJsExecutionService;
+	private scriptManager!: VaultScriptManager;
 	settings!: SafeJsSettings;
 
 	async onload(): Promise<void> {
@@ -37,8 +39,9 @@ export default class SafeJsPlugin extends Plugin {
 			executionService: this.executionService,
 			rpcRegistry,
 		});
+		this.scriptManager = new VaultScriptManager(this, this.executionService);
 
-		this.addSettingTab(new SafeJsSettingTab(this.app, this, permissionSettingsStore));
+		this.addSettingTab(new SafeJsSettingTab(this.app, this, permissionSettingsStore, this.scriptManager));
 		this.registerView(SAFE_JS_DOCS_VIEW_TYPE, leaf => new SafeJsDocsView(leaf, rpcRegistry));
 		this.addCommand({
 			id: 'open-api-docs',
@@ -47,15 +50,20 @@ export default class SafeJsPlugin extends Plugin {
 				void this.openDocsView();
 			},
 		});
+		this.scriptManager.registerCommands();
+		this.app.workspace.onLayoutReady(() => {
+			void this.scriptManager.runStartupScripts();
+		});
 		registerSafeJsMarkdownProcessors(this, this.executionService);
 	}
 
 	onunload(): void {
+		this.scriptManager.unload();
 		this.executionService.cancelAll();
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<SafeJsSettings>);
+		this.settings = normalizeSafeJsSettings(await this.loadData());
 	}
 
 	async saveSettings(): Promise<void> {

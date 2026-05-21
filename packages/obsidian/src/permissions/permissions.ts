@@ -7,7 +7,10 @@ export interface PermissionDefinition {
 	description: string;
 	severity: PermissionSeverity;
 	grantGuidance: string;
+	standalone?: boolean;
 }
+
+export const RICH_OUTPUT_PERMISSION: PermissionId = 'output:render-rich';
 
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 	{
@@ -107,6 +110,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 		description: 'Send script-provided data to HTTP or HTTPS services and read their responses.',
 		severity: 'critical',
 		grantGuidance: 'Grant this only when you expect the script to contact external services.',
+	},
+	{
+		id: RICH_OUTPUT_PERMISSION,
+		name: 'Render rich output',
+		description: 'Render script results as Markdown or sanitized HTML in Obsidian.',
+		severity: 'critical',
+		grantGuidance: 'Grant this only when you trust the script output. Markdown and HTML can load remote resources when rendered.',
+		standalone: true,
 	},
 	{
 		id: 'storage:read',

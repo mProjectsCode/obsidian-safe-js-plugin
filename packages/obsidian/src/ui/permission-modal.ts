@@ -2,6 +2,7 @@ import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
 import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
+import { RICH_OUTPUT_PERMISSION } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export class ObsidianPermissionPrompt implements PermissionPrompt {
@@ -71,6 +72,16 @@ class PermissionApprovalModal extends Modal {
 				text: 'Network access is requested together with read access. This script could send vault or editor data to external services.',
 			});
 		}
+		if (this.hasRichOutputExfiltrationRisk()) {
+			contentEl.createEl('p', {
+				text: 'Rich output is requested together with read access. Rendered Markdown or HTML can load remote resources, including addresses that contain vault or editor data.',
+			});
+		}
+		if (this.hasVaultWriteRenderRisk()) {
+			contentEl.createEl('p', {
+				text: 'Vault write access can create Markdown or HTML that loads remote resources later when opened or previewed.',
+			});
+		}
 
 		const list = contentEl.createEl('ul');
 		for (const permission of this.request.permissions) {
@@ -132,9 +143,25 @@ class PermissionApprovalModal extends Modal {
 	}
 
 	private hasNetworkExfiltrationRisk(): boolean {
-		const permissions = new Set(this.request.permissions);
+		const permissions = this.getAllPermissions();
 		const readPermissions: PermissionId[] = ['vault:read', 'metadata:read', 'workspace:read', 'editor:read'];
 		return permissions.has('network:request') && readPermissions.some(permission => permissions.has(permission));
+	}
+
+	private hasRichOutputExfiltrationRisk(): boolean {
+		const permissions = this.getAllPermissions();
+		const readPermissions: PermissionId[] = ['vault:read', 'metadata:read', 'workspace:read', 'editor:read'];
+		return permissions.has(RICH_OUTPUT_PERMISSION) && readPermissions.some(permission => permissions.has(permission));
+	}
+
+	private hasVaultWriteRenderRisk(): boolean {
+		const permissions = this.getAllPermissions();
+		const writePermissions: PermissionId[] = ['vault:create', 'vault:modify', 'editor:write'];
+		return writePermissions.some(permission => permissions.has(permission));
+	}
+
+	private getAllPermissions(): Set<PermissionId> {
+		return new Set(this.request.allPermissions);
 	}
 }
 

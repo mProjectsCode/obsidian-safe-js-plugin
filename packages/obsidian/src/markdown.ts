@@ -1,7 +1,8 @@
 import { MarkdownRenderChild } from 'obsidian';
-import type { SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
 import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
+import { SafeJsOutputFormatter } from 'packages/obsidian/src/output/output-format';
+import { SafeJsOutputRenderer } from 'packages/obsidian/src/output/rendered-output';
 
 export function registerSafeJsMarkdownProcessors(plugin: SafeJsPlugin, executionService: SafeJsExecutionService): void {
 	plugin.registerMarkdownCodeBlockProcessor('safe-js', (source, element, context) => {
@@ -60,39 +61,11 @@ class SafeJsBlockExecutionChild extends MarkdownRenderChild {
 			return;
 		}
 
-		outputElement.setText(this.debug ? this.formatDebugResult(result) : this.formatUserResult(result));
-	}
-
-	private formatUserResult(result: SafeJsExecutionResult): string {
-		if (result.status === 'success') {
-			return this.formatValue(result.value);
-		}
-
-		return `Safe JS ${result.status}: ${result.message}`;
-	}
-
-	private formatDebugResult(result: SafeJsExecutionResult): string {
-		const lines = [
-			`status: ${result.status}`,
-			`codeHash: ${result.codeHash}`,
-			`permissions: ${result.permissions.length === 0 ? '(none)' : result.permissions.join(', ')}`,
-			`elapsedMs: ${result.elapsedMs}`,
-		];
-
-		if (result.status === 'success') {
-			lines.push('value:', this.formatValue(result.value));
-		} else {
-			lines.push(`message: ${result.message}`);
-		}
-
-		return lines.join('\n');
-	}
-
-	private formatValue(value: unknown): string {
-		if (typeof value === 'string') {
-			return value;
-		}
-
-		return JSON.stringify(value, null, 2);
+		await new SafeJsOutputRenderer(this.plugin.app).render(
+			SafeJsOutputFormatter.fromExecutionResult(result, this.debug),
+			this.containerEl,
+			this.sourcePath,
+			this,
+		);
 	}
 }

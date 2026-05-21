@@ -180,7 +180,7 @@ test('registers owned custom permissions, methods, and globals', () => {
 	]);
 	expect(registry.getSandboxGlobals(new Set())).toEqual([]);
 	expect(registry.getSandboxGlobals(new Set(['plugin:call']))).toEqual([{ name: 'examplePlugin', value: { enabled: true } }]);
-	expect(registry.getDocs()[0]).toMatchObject({
+	expect(registry.getDocs().find(group => group.permission.id === 'plugin:call')).toMatchObject({
 		permission: {
 			id: 'plugin:call',
 		},
@@ -198,6 +198,20 @@ test('registers owned custom permissions, methods, and globals', () => {
 	expect(registry.getKnownPermissions()).not.toContain('plugin:call');
 	expect(registry.getWorkerBindings()).toEqual([]);
 	expect(registry.getSandboxGlobals(new Set(['plugin:call']))).toEqual([]);
+});
+
+test('exposes standalone built-in permissions', () => {
+	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+
+	expect(registry.getKnownPermissions()).toContain('output:render-rich');
+	expect(registry.getDocs().find(group => group.permission.id === 'output:render-rich')).toMatchObject({
+		permission: {
+			id: 'output:render-rich',
+			standalone: true,
+		},
+		methods: [],
+		globals: [],
+	});
 });
 
 test('rejects duplicate sandbox API paths and reserved globals', () => {

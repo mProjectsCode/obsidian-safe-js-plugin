@@ -7,6 +7,9 @@ import {
 	LocalStoragePermissionApprovalStore,
 	LocalStoragePermissionSettingsStore,
 } from 'packages/obsidian/src/permissions/approval-store';
+import type { SafeJsScriptConfig } from 'packages/obsidian/src/scripts/script-settings';
+import { createScriptConfig, isJavaScriptVaultScriptPath, normalizeSafeJsScripts } from 'packages/obsidian/src/scripts/script-settings';
+import type { VaultScriptManager } from 'packages/obsidian/src/scripts/vault-script-manager';
 import type { ScriptStorageEntry } from 'packages/obsidian/src/storage/script-storage';
 import { ScriptStorageManager } from 'packages/obsidian/src/storage/script-storage';
 
@@ -14,29 +17,34 @@ export interface SafeJsSettings {
 	executionTimeoutsEnabled: boolean;
 	executionTimeoutMs: number;
 	debugBlocksEnabled: boolean;
+	scripts: SafeJsScriptConfig[];
 }
 
 export const DEFAULT_SETTINGS: SafeJsSettings = {
 	executionTimeoutsEnabled: true,
 	executionTimeoutMs: 5000,
 	debugBlocksEnabled: true,
+	scripts: [],
 };
 
 export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
 	private readonly approvalStore: LocalStoragePermissionApprovalStore;
 	private readonly permissionSettingsStore: PermissionSettingsStore;
+	private readonly scriptManager?: VaultScriptManager;
 	private readonly staleEntryAgeMs = 30 * 24 * 60 * 60 * 1000;
 
 	constructor(
 		app: App,
 		plugin: SafeJsPlugin,
 		permissionSettingsStore: PermissionSettingsStore = new LocalStoragePermissionSettingsStore(new AppPermissionStorage(app)),
+		scriptManager?: VaultScriptManager,
 	) {
 		super(app, plugin);
 		this.plugin = plugin;
 		this.approvalStore = new LocalStoragePermissionApprovalStore(new AppPermissionStorage(app));
 		this.permissionSettingsStore = permissionSettingsStore;
+		this.scriptManager = scriptManager;
 	}
 
 	display(): void {
@@ -93,8 +101,105 @@ export class SafeJsSettingTab extends PluginSettingTab {
 				}),
 			);
 
+		this.renderVaultScripts(containerEl);
 		this.renderApprovalStorage(containerEl);
 		this.renderScriptStorage(containerEl);
+	}
+
+	private renderVaultScripts(containerEl: HTMLElement): void {
+		const section = containerEl.createEl('section');
+		new Setting(section).setName('Vault scripts').setHeading();
+		section.createEl('p', {
+			text: `${this.plugin.settings.scripts.length} vault ${this.plugin.settings.scripts.length === 1 ? 'script is' : 'scripts are'} configured.`,
+		});
+
+		for (const script of this.plugin.settings.scripts) {
+			this.renderVaultScript(section, script);
+		}
+
+		this.renderAddVaultScript(section);
+	}
+
+	private renderVaultScript(section: HTMLElement, script: SafeJsScriptConfig): void {
+		new Setting(section)
+			.setName(script.name)
+			.setDesc(script.path)
+			.addText(text =>
+				text
+					.setPlaceholder('Script name')
+					.setValue(script.name)
+					.onChange(async value => {
+						script.name = value.trim() || script.path;
+						await this.saveScriptSettings();
+					}),
+			)
+			.addText(text =>
+				text
+					.setPlaceholder('Scripts/example.js')
+					.setValue(script.path)
+					.onChange(async value => {
+						script.path = value.trim();
+						await this.saveScriptSettings();
+					}),
+			)
+			.addToggle(toggle =>
+				toggle
+					.setTooltip('Run on startup')
+					.setValue(script.runOnStartup)
+					.onChange(async value => {
+						script.runOnStartup = value;
+						await this.saveScriptSettings();
+					}),
+			)
+			.addButton(button =>
+				button.setButtonText('Remove').onClick(async () => {
+					this.plugin.settings.scripts = this.plugin.settings.scripts.filter(candidate => candidate.id !== script.id);
+					await this.saveScriptSettings();
+					this.display();
+				}),
+			);
+	}
+
+	private renderAddVaultScript(section: HTMLElement): void {
+		let path = '';
+		let name = '';
+
+		new Setting(section)
+			.setName('Add script')
+			.setDesc('Configure a vault .js file as a command.')
+			.addText(text =>
+				text.setPlaceholder('Scripts/example.js').onChange(value => {
+					path = value;
+				}),
+			)
+			.addText(text =>
+				text.setPlaceholder('Command name').onChange(value => {
+					name = value;
+				}),
+			)
+			.addButton(button =>
+				button.setButtonText('Add').onClick(async () => {
+					const normalizedPath = path.trim();
+					if (normalizedPath === '' || !isJavaScriptVaultScriptPath(normalizedPath)) {
+						new Notice('Enter a vault path ending in .js.');
+						return;
+					}
+
+					if (this.plugin.settings.scripts.some(script => script.path === normalizedPath)) {
+						new Notice('That script is already configured.');
+						return;
+					}
+
+					this.plugin.settings.scripts = [...this.plugin.settings.scripts, createScriptConfig(normalizedPath, name, this.plugin.settings.scripts)];
+					await this.saveScriptSettings();
+					this.display();
+				}),
+			);
+	}
+
+	private async saveScriptSettings(): Promise<void> {
+		await this.plugin.saveSettings();
+		this.scriptManager?.reloadCommands();
 	}
 
 	private renderApprovalStorage(containerEl: HTMLElement): void {
@@ -212,4 +317,20 @@ function formatCaller(callerPluginId: string | undefined): string {
 
 function formatScope(scope: string | null): string {
 	return scope === null ? 'global' : `scoped ${scope.slice(0, 12)}`;
+}
+
+export function normalizeSafeJsSettings(value: unknown): SafeJsSettings {
+	const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+	const executionTimeoutMs =
+		typeof record.executionTimeoutMs === 'number' && Number.isFinite(record.executionTimeoutMs) && record.executionTimeoutMs > 0
+			? record.executionTimeoutMs
+			: DEFAULT_SETTINGS.executionTimeoutMs;
+
+	return {
+		executionTimeoutsEnabled:
+			typeof record.executionTimeoutsEnabled === 'boolean' ? record.executionTimeoutsEnabled : DEFAULT_SETTINGS.executionTimeoutsEnabled,
+		executionTimeoutMs,
+		debugBlocksEnabled: typeof record.debugBlocksEnabled === 'boolean' ? record.debugBlocksEnabled : DEFAULT_SETTINGS.debugBlocksEnabled,
+		scripts: normalizeSafeJsScripts(record.scripts),
+	};
 }

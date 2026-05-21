@@ -13,7 +13,8 @@ This is a planning checklist for the host methods that Safe JS should mirror. Ke
 - Normalize and validate all vault paths at the RPC boundary. Reject absolute paths, parent traversal, empty file paths, and paths that resolve outside the vault model.
 - Do not mirror Obsidian methods that require host callbacks, such as `Vault.process` or `FileManager.processFrontMatter`, by evaluating worker-supplied functions on the host.
 - Event subscriptions are deferred until there is a lifecycle design for unsubscribe, plugin unload cleanup, and backpressure.
-- If `network:request` is ever combined with vault or editor read permissions, the approval UI and docs must clearly warn that script output can leave the device.
+- If `network:request` or `output:render-rich` is ever combined with vault or editor read permissions, the approval UI and docs must clearly warn that script output can leave the device.
+- Vault create, vault modify, and editor write permissions can also create Markdown or HTML that loads remote resources later when the user opens or previews the file.
 - [x] Run a focused permission audit before expanding the RPC surface, especially for network requests, vault writes/deletes, editor writes, workspace navigation, and storage scope boundaries.
 
 Focused audit note, 2026-05-15:
@@ -255,6 +256,19 @@ Implementation guardrail:
 
 - [x] Approval copy must say that network access can send script-provided data to external services.
 - [x] If combined with `vault:read`, `metadata:read`, `workspace:read`, or `editor:read`, approval copy must say vault or editor data can be exfiltrated.
+
+## `output:render-rich`
+
+Render script results as Markdown or sanitized HTML in Obsidian.
+
+- [x] Markdown and HTML result objects require `output:render-rich` before Safe JS renders them.
+- [x] Without `output:render-rich`, Markdown and HTML result objects are displayed as a plain-text blocked message.
+
+Implementation guardrail:
+
+- [x] Approval copy must say that rendered Markdown or HTML can load remote resources.
+- [x] If combined with `vault:read`, `metadata:read`, `workspace:read`, or `editor:read`, approval copy must say rendered output can include vault or editor data in remote resource URLs.
+- [x] Docs must disclose that vault create, vault modify, and editor write permissions can write content that later loads remote resources when opened or previewed.
 
 ## `storage:read`
 

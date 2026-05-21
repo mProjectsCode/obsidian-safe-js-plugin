@@ -126,6 +126,7 @@ export interface SafeJsExecutionSource {
 export interface SafeJsExecutionOptions {
 	source?: SafeJsExecutionSource;
 	debug?: boolean;
+	approvalMode?: 'prompt' | 'skip-missing';
 	timeoutMs?: number | null;
 	signal?: AbortSignal;
 }

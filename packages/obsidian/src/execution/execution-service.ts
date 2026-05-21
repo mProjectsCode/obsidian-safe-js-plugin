@@ -9,6 +9,7 @@ import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export interface PermissionPromptRequest {
+	allPermissions: PermissionId[];
 	codeHash: string;
 	callerPluginId?: string;
 	callerPluginName?: string;
@@ -108,8 +109,19 @@ export class SafeJsExecutionService {
 			: [];
 		const promptedPermissions = missingPermissions.filter(permission => !autoApprovedPermissions.includes(permission));
 
+		if (options.approvalMode === 'skip-missing' && promptedPermissions.length > 0) {
+			return {
+				status: 'permission-denied',
+				codeHash,
+				message: `Execution skipped because permission approval is required for ${promptedPermissions.join(', ')}.`,
+				permissions,
+				elapsedMs: this.now() - startedAt,
+			};
+		}
+
 		if (promptedPermissions.length > 0) {
 			const approved = await this.permissionPrompt.requestApproval({
+				allPermissions: permissions,
 				codeHash,
 				callerPluginId: options.source?.callerPluginId,
 				callerPluginName: options.source?.callerPluginName,
