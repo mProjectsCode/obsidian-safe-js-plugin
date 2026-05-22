@@ -1,22 +1,22 @@
-import type { Plugin } from 'obsidian';
-import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
-import type { RpcMethodDefinition, RpcRegistrationOwner, RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 import type {
 	PermissionDefinition,
-	SafeJsValidationContext,
-	SafeJsValidationFunction,
-	SafeJsValidationResult,
-	SafeJsValidator,
-	SafeJsValidatorReference,
 	SafeJsCallerApi,
 	SafeJsExecutionOptions,
 	SafeJsExecutionResult,
 	SafeJsPublicApi,
 	SafeJsRegistration,
+	SafeJsValidationContext,
+	SafeJsValidationFunction,
+	SafeJsValidationResult,
+	SafeJsValidator,
+	SafeJsValidatorReference,
 	SandboxFunctionDefinition,
 	SandboxGlobalDefinition,
 	SandboxValidatorReference,
-} from 'packages/safe-js-api/src';
+} from '@lemons_dev/obsidian-safe-js-api';
+import type { Plugin } from 'obsidian';
+import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
+import type { RpcMethodDefinition, RpcRegistrationOwner, RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export type {
 	PermissionDefinition,

@@ -2,7 +2,7 @@
 
 // eslint-disable-next-line import/order -- SES lockdown must run before the worker's other runtime dependencies.
 import { SesCompartment, sesHarden } from 'packages/obsidian/src/worker/ses-runtime';
-import type { ExecuteWorkerMessage, HostRpcResponseMessage, JsonValue, WorkerRpcBinding } from 'packages/obsidian/src/execution/contracts';
+import type { ExecuteWorkerMessage, HostRpcResponseMessage, JsonValue, WorkerRpcBinding } from '@lemons_dev/obsidian-safe-js-api/internal';
 import { executeWorkerMessageSchema, hostRpcResponseMessageSchema } from 'packages/obsidian/src/execution/contracts';
 import { isJsonValue, toJsonValue } from 'packages/obsidian/src/execution/json';
 import { SANDBOX_GLOBALS } from 'packages/obsidian/src/execution/sandbox-globals';

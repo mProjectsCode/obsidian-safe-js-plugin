@@ -1,13 +1,7 @@
-import type { JsonValue, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
+import type { JsonValue, SafeJsExecutionResult, SafeJsRenderedOutput } from '@lemons_dev/obsidian-safe-js-api';
 import { RICH_OUTPUT_PERMISSION } from 'packages/obsidian/src/permissions/permissions';
 
-export type SafeJsOutputFormat = 'text' | 'markdown' | 'html';
-
-export interface SafeJsRenderedOutput {
-	[key: string]: JsonValue;
-	format: SafeJsOutputFormat;
-	content: string;
-}
+export type { SafeJsRenderedOutput } from '@lemons_dev/obsidian-safe-js-api';
 
 export class SafeJsOutputFormatter {
 	static fromExecutionResult(result: SafeJsExecutionResult, debug: boolean = false): SafeJsRenderedOutput {

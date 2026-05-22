@@ -1,4 +1,4 @@
-import type { ExecuteWorkerMessage, HostRpcResponseMessage } from 'packages/obsidian/src/execution/contracts';
+import type { ExecuteWorkerMessage, HostRpcResponseMessage } from '@lemons_dev/obsidian-safe-js-api/internal';
 import SafeJsWorker from 'packages/obsidian/src/worker/safe-js-worker.ts?worker&inline';
 
 export type WorkerClientMessage = unknown;

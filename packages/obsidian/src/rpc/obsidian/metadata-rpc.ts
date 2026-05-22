@@ -1,3 +1,4 @@
+import type { JsonValue } from '@lemons_dev/obsidian-safe-js-api';
 import type { App } from 'obsidian';
 import {
 	getAllTags,
@@ -8,7 +9,6 @@ import {
 	parseFrontMatterTags,
 	resolveSubpath,
 } from 'obsidian';
-import type { JsonValue } from 'packages/obsidian/src/execution/contracts';
 import {
 	emptyParamsSchema,
 	jsonRecordSchema,

@@ -1,10 +1,9 @@
-import type { SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
+import type { PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import type { ActiveExecution } from 'packages/obsidian/src/execution/worker-execution-session';
 import { WorkerExecutionSession } from 'packages/obsidian/src/execution/worker-execution-session';
 import type { PermissionApprovalStore, PermissionApprovalSubject } from 'packages/obsidian/src/permissions/approval-store';
 import { hashCode } from 'packages/obsidian/src/permissions/hash';
-import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 

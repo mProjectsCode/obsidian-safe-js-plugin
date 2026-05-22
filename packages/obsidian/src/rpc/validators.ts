@@ -1,40 +1,29 @@
+import type {
+	SafeJsRegistration,
+	SafeJsValidationContext,
+	SafeJsValidationFailure,
+	SafeJsValidationFunction,
+	SafeJsValidationResult,
+	SafeJsValidationSuccess,
+	SafeJsValidator,
+	SafeJsValidatorReference,
+} from '@lemons_dev/obsidian-safe-js-api';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { validateVaultPath } from 'packages/obsidian/src/rpc/path-validation';
 import { emptyParamsSchema, jsonRecordSchema, okResponseSchema, optionalPathParamsSchema, pathParamsSchema } from 'packages/obsidian/src/rpc/schemas';
 import { storageKeySchema, storageValueSchema } from 'packages/obsidian/src/storage/storage-validation';
 import { z } from 'zod';
 
-export interface SafeJsValidationContext {
-	method?: string;
-	direction?: 'request' | 'response' | 'manual';
-	validatorId?: string;
-}
-
-export interface SafeJsValidationSuccess<T = unknown> {
-	success: true;
-	data: T;
-}
-
-export interface SafeJsValidationFailure {
-	success: false;
-	message: string;
-}
-
-export type SafeJsValidationResult<T = unknown> = SafeJsValidationSuccess<T> | SafeJsValidationFailure;
-
-export interface SafeJsValidator<T = unknown> {
-	id: string;
-	description: string;
-	validate(value: unknown, context: SafeJsValidationContext): SafeJsValidationResult<T>;
-}
-
-export type SafeJsValidationFunction<T = unknown> = (value: unknown, context: SafeJsValidationContext) => SafeJsValidationResult<T>;
-
-export type SafeJsValidatorReference<T = unknown> = string | SafeJsValidator<T> | SafeJsValidationFunction<T>;
-
-export interface SafeJsRegistration {
-	unregister(): void;
-}
+export type {
+	SafeJsRegistration,
+	SafeJsValidationContext,
+	SafeJsValidationFailure,
+	SafeJsValidationFunction,
+	SafeJsValidationResult,
+	SafeJsValidationSuccess,
+	SafeJsValidator,
+	SafeJsValidatorReference,
+};
 
 export class ValidatorRegistry {
 	private readonly validators = new Map<string, SafeJsValidator<unknown>>();

@@ -1,14 +1,6 @@
-export type PermissionId = `${string}:${string}`;
-export type PermissionSeverity = 'low' | 'medium' | 'high' | 'critical';
+import type { PermissionDefinition, PermissionId, PermissionSeverity } from '@lemons_dev/obsidian-safe-js-api';
 
-export interface PermissionDefinition {
-	id: PermissionId;
-	name: string;
-	description: string;
-	severity: PermissionSeverity;
-	grantGuidance: string;
-	standalone?: boolean;
-}
+export type { PermissionDefinition, PermissionId, PermissionSeverity };
 
 export const RICH_OUTPUT_PERMISSION: PermissionId = 'output:render-rich';
 

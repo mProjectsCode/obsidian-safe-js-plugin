@@ -1,6 +1,6 @@
+import type { JsonValue } from '@lemons_dev/obsidian-safe-js-api';
 import type { App, OpenViewState, ViewState, WorkspaceLeaf } from 'obsidian';
 import { TFile } from 'obsidian';
-import type { JsonValue } from 'packages/obsidian/src/execution/contracts';
 import { isJsonValue, toJsonValue } from 'packages/obsidian/src/execution/json';
 import { pickJsonFields } from 'packages/obsidian/src/execution/json-fields';
 import { fileToDto } from 'packages/obsidian/src/rpc/dtos/files';

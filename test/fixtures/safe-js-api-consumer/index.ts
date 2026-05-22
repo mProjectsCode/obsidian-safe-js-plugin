@@ -4,9 +4,11 @@ import type {
 	PermissionDefinition,
 	SafeJsCallerApi,
 	SafeJsExecutionResult,
+	SafeJsRenderedOutput,
 	SandboxFunctionDefinition,
 	SandboxGlobalDefinition,
 } from '@lemons_dev/obsidian-safe-js-api';
+import type { WorkerRpcBinding } from '@lemons_dev/obsidian-safe-js-api/internal';
 
 declare const app: App;
 declare const callerPlugin: Plugin;
@@ -65,5 +67,20 @@ const sandboxGlobal: SandboxGlobalDefinition = {
 	permission: permission.id,
 };
 
+const renderedOutput: SafeJsRenderedOutput = {
+	format: 'markdown',
+	content: '**Done**',
+};
+
+const workerBinding: WorkerRpcBinding = {
+	method: sandboxFunction.method,
+	namespace: sandboxFunction.namespace,
+	functionName: sandboxFunction.functionName,
+	permission: sandboxFunction.permission,
+	paramStyle: sandboxFunction.paramStyle,
+};
+
 void sandboxFunction;
 void sandboxGlobal;
+void renderedOutput;
+void workerBinding;

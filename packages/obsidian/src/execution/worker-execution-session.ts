@@ -1,7 +1,7 @@
-import type { HostRpcRequestMessage, HostRpcResponseMessage, SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
+import type { PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
+import type { HostRpcRequestMessage, HostRpcResponseMessage } from '@lemons_dev/obsidian-safe-js-api/internal';
 import { workerToHostMessageSchema } from 'packages/obsidian/src/execution/contracts';
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
-import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export interface ActiveExecution {

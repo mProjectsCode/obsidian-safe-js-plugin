@@ -1,5 +1,5 @@
+import type { PermissionId } from '@lemons_dev/obsidian-safe-js-api';
 import type { App } from 'obsidian';
-import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 
 export interface PermissionApproval {
 	codeHash: string;

@@ -1,18 +1,20 @@
-import type { JsonValue, WorkerRpcBinding, WorkerSandboxGlobal } from 'packages/obsidian/src/execution/contracts';
-import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
-import type { PermissionDefinition, PermissionId } from 'packages/obsidian/src/permissions/permissions';
-import { PERMISSION_DEFINITIONS, getPermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
 import type {
-	BuiltInValidatorOptions,
+	JsonValue,
+	PermissionDefinition,
+	PermissionId,
 	SafeJsRegistration,
 	SafeJsValidationContext,
 	SafeJsValidationResult,
 	SafeJsValidator,
 	SafeJsValidatorReference,
-} from 'packages/obsidian/src/rpc/validators';
+} from '@lemons_dev/obsidian-safe-js-api';
+import type { WorkerRpcBinding, WorkerSandboxGlobal } from '@lemons_dev/obsidian-safe-js-api/internal';
+import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
+import { PERMISSION_DEFINITIONS, getPermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
+import type { BuiltInValidatorOptions } from 'packages/obsidian/src/rpc/validators';
 import { ValidatorRegistry, createBuiltInValidators } from 'packages/obsidian/src/rpc/validators';
 
-export type { SafeJsRegistration } from 'packages/obsidian/src/rpc/validators';
+export type { SafeJsRegistration } from '@lemons_dev/obsidian-safe-js-api';
 
 export interface RpcContext {
 	grantedPermissions: ReadonlySet<PermissionId>;

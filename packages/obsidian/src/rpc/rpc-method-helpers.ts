@@ -1,7 +1,7 @@
+import type { SafeJsValidatorReference } from '@lemons_dev/obsidian-safe-js-api';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { ok, okResponseSchema } from 'packages/obsidian/src/rpc/rpc-common';
 import type { RpcContext, RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
-import type { SafeJsValidatorReference } from 'packages/obsidian/src/rpc/validators';
 import { zodValidator } from 'packages/obsidian/src/rpc/validators';
 export { storageKeySchema, storageValueSchema } from 'packages/obsidian/src/storage/storage-validation';
 import { z } from 'zod';

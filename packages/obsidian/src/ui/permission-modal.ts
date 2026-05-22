@@ -1,7 +1,7 @@
+import type { PermissionId } from '@lemons_dev/obsidian-safe-js-api';
 import type { App } from 'obsidian';
 import { Modal, Setting } from 'obsidian';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
-import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
 import { RICH_OUTPUT_PERMISSION } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 

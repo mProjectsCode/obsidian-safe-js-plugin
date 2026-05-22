@@ -1,4 +1,12 @@
-import type { PermissionId } from 'packages/obsidian/src/permissions/permissions';
+import type { JsonValue, PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
+import type {
+	ExecuteWorkerMessage,
+	HostRpcRequestMessage,
+	HostRpcResponseMessage,
+	WorkerRpcBinding,
+	WorkerSandboxGlobal,
+	WorkerToHostMessage,
+} from '@lemons_dev/obsidian-safe-js-api/internal';
 import { z } from 'zod';
 
 export const permissionSchema = z
@@ -10,16 +18,24 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 	z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValueSchema), z.record(z.string(), jsonValueSchema)]),
 );
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type {
+	ExecuteWorkerMessage,
+	HostRpcRequestMessage,
+	HostRpcResponseMessage,
+	JsonValue,
+	SafeJsExecutionOptions,
+	SafeJsExecutionResult,
+	WorkerRpcBinding,
+	WorkerSandboxGlobal,
+	WorkerToHostMessage,
+};
 
-export const workerSandboxGlobalSchema = z.object({
+export const workerSandboxGlobalSchema: z.ZodType<WorkerSandboxGlobal> = z.object({
 	name: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/u),
 	value: jsonValueSchema,
 });
 
-export type WorkerSandboxGlobal = z.infer<typeof workerSandboxGlobalSchema>;
-
-export const workerRpcBindingSchema = z.object({
+export const workerRpcBindingSchema: z.ZodType<WorkerRpcBinding> = z.object({
 	method: z.string().min(1),
 	namespace: z.string().min(1),
 	functionName: z.string().min(1),
@@ -28,9 +44,7 @@ export const workerRpcBindingSchema = z.object({
 	argNames: z.array(z.string().min(1)).optional(),
 });
 
-export type WorkerRpcBinding = z.infer<typeof workerRpcBindingSchema>;
-
-export const executeWorkerMessageSchema = z.object({
+export const executeWorkerMessageSchema: z.ZodType<ExecuteWorkerMessage> = z.object({
 	type: z.literal('execute'),
 	executionId: z.string().min(1),
 	code: z.string(),
@@ -38,9 +52,7 @@ export const executeWorkerMessageSchema = z.object({
 	sandboxGlobals: z.array(workerSandboxGlobalSchema).default([]),
 });
 
-export type ExecuteWorkerMessage = z.infer<typeof executeWorkerMessageSchema>;
-
-export const hostRpcRequestMessageSchema = z.object({
+export const hostRpcRequestMessageSchema: z.ZodType<HostRpcRequestMessage> = z.object({
 	type: z.literal('rpc-request'),
 	executionId: z.string().min(1),
 	rpcRequestId: z.string().min(1),
@@ -48,9 +60,7 @@ export const hostRpcRequestMessageSchema = z.object({
 	params: jsonValueSchema,
 });
 
-export type HostRpcRequestMessage = z.infer<typeof hostRpcRequestMessageSchema>;
-
-export const hostRpcResponseMessageSchema = z.discriminatedUnion('ok', [
+export const hostRpcResponseMessageSchema: z.ZodType<HostRpcResponseMessage> = z.discriminatedUnion('ok', [
 	z.object({
 		type: z.literal('rpc-response'),
 		executionId: z.string().min(1),
@@ -69,8 +79,6 @@ export const hostRpcResponseMessageSchema = z.discriminatedUnion('ok', [
 		}),
 	}),
 ]);
-
-export type HostRpcResponseMessage = z.infer<typeof hostRpcResponseMessageSchema>;
 
 export const workerExecutionResultMessageSchema = z.discriminatedUnion('ok', [
 	z.object({
@@ -91,42 +99,4 @@ export const workerExecutionResultMessageSchema = z.discriminatedUnion('ok', [
 	}),
 ]);
 
-export const workerToHostMessageSchema = z.union([hostRpcRequestMessageSchema, workerExecutionResultMessageSchema]);
-
-export type SafeJsExecutionResult =
-	| {
-			status: 'success';
-			codeHash: string;
-			value: JsonValue;
-			permissions: PermissionId[];
-			elapsedMs: number;
-	  }
-	| {
-			status: 'permission-denied';
-			codeHash: string;
-			message: string;
-			permissions: PermissionId[];
-			elapsedMs: number;
-	  }
-	| {
-			status: 'parse-error' | 'validation-error' | 'runtime-error' | 'timeout' | 'cancelled';
-			codeHash: string;
-			message: string;
-			permissions: PermissionId[];
-			elapsedMs: number;
-	  };
-
-export interface SafeJsExecutionSource {
-	path?: string;
-	lineStart?: number;
-	callerPluginId?: string;
-	callerPluginName?: string;
-}
-
-export interface SafeJsExecutionOptions {
-	source?: SafeJsExecutionSource;
-	debug?: boolean;
-	approvalMode?: 'prompt' | 'skip-missing';
-	timeoutMs?: number | null;
-	signal?: AbortSignal;
-}
+export const workerToHostMessageSchema: z.ZodType<WorkerToHostMessage> = z.union([hostRpcRequestMessageSchema, workerExecutionResultMessageSchema]);

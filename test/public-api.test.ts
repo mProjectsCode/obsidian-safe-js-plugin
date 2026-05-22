@@ -1,10 +1,9 @@
 import { expect, test } from 'bun:test';
 import type { Plugin } from 'obsidian';
-import type { SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
+import type { SafeJsExecutionOptions, SafeJsExecutionResult, SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
 import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import { DefaultSafeJsPublicApi } from 'packages/obsidian/src/public-api/safe-js-public-api';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
-import type { SafeJsValidationResult } from 'packages/obsidian/src/rpc/validators';
 
 const testValidatorOptions = {
 	getConfigDir: (): string => '.obsidian',

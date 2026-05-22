@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
+import type { SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
 import { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
 import type { HostWorkerMessage, WorkerClient, WorkerClientMessage, WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import { MemoryPermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
-import type { SafeJsValidationResult } from 'packages/obsidian/src/rpc/validators';
 
 const testValidatorOptions = {
 	getConfigDir: (): string => '.obsidian',
