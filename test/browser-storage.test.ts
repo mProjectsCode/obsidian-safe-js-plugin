@@ -50,6 +50,24 @@ test('permission approvals persist through Obsidian app-local storage', () => {
 	expect(window.localStorage.getItem('safe-js:permissions:v1:new-hash')).toBeNull();
 });
 
+test('unindexed legacy permission approvals are revoked on load', () => {
+	const app = new BrowserBackedAppStorage() as unknown as App;
+	const storage = new AppPermissionStorage(app);
+	const store = new LocalStoragePermissionApprovalStore(storage);
+
+	window.localStorage.setItem(
+		'safe-js:permissions:v1:legacy-hash',
+		JSON.stringify({
+			codeHash: 'legacy-hash',
+			permissions: ['vault:read'],
+			updatedAt: 10,
+		}),
+	);
+
+	expect(store.load({ codeHash: 'legacy-hash' })).toBeNull();
+	expect(window.localStorage.getItem('safe-js:permissions:v1:legacy-hash')).toBeNull();
+});
+
 test('permission settings persist through Obsidian app-local storage', () => {
 	const app = new BrowserBackedAppStorage() as unknown as App;
 	const store = new LocalStoragePermissionSettingsStore(new AppPermissionStorage(app));

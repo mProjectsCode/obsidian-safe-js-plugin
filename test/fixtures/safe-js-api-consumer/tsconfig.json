@@ -1,0 +1,10 @@
+{
+	"extends": "../../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"@lemons_dev/obsidian-safe-js-api": ["../../../packages/safe-js-api/src"]
+		}
+	},
+	"include": ["index.ts"]
+}

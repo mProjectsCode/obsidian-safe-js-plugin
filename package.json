@@ -4,8 +4,11 @@
 	"description": "Run JavaScript in Obsidian through sandboxed Web Workers and a limited RPC surface.",
 	"main": "main.js",
 	"scripts": {
+		"deps:init": "git submodule update --init --recursive && bun install && bun --cwd=packages/safe-js-api install",
 		"dev": "vite build --mode=development --watch",
 		"build": "vite build --mode=production",
+		"api:build": "bun --cwd=packages/safe-js-api run build",
+		"api:typecheck": "bun --cwd=packages/safe-js-api run typecheck && tsc --noEmit -p test/fixtures/safe-js-api-consumer/tsconfig.json",
 		"typecheck": "tsc --noEmit --skipLibCheck",
 		"test": "LOG_TESTS=false bun test",
 		"test:log": "LOG_TESTS=true bun test",
@@ -13,8 +16,8 @@
 		"format:check": "prettier --check .",
 		"lint": "eslint --max-warnings=0",
 		"lint:fix": "eslint --max-warnings=0 --fix packages/**",
-		"check": "bun run format:check && bun run typecheck && bun run lint && bun run test",
-		"check:fix": "bun run format && bun run typecheck && bun run lint:fix && bun run test",
+		"check": "bun run format:check && bun run typecheck && bun run api:typecheck && bun run lint && bun run test",
+		"check:fix": "bun run format && bun run typecheck && bun run api:typecheck && bun run lint:fix && bun run test",
 		"release": "lemons-automation release"
 	},
 	"keywords": [],

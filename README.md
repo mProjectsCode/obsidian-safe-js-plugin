@@ -87,6 +87,27 @@ const result = await safeJsApi?.execute(`// @permission ui:notify
 await api.ui.notice("Hello from another plugin");`);
 ```
 
+For TypeScript integrations, install the API helper package:
+
+```sh
+bun add -d @lemons_dev/obsidian-safe-js-api
+```
+
+It can also be installed from the dedicated package repository:
+
+```sh
+bun add -d github:mProjectsCode/obsidian-safe-js-api#v0.1.3
+```
+
+Use the helper to avoid writing the plugin lookup cast yourself:
+
+```ts
+import { getSafeJsApi } from '@lemons_dev/obsidian-safe-js-api';
+import type { SafeJsCallerApi } from '@lemons_dev/obsidian-safe-js-api';
+
+const safeJsApi: SafeJsCallerApi | undefined = getSafeJsApi(this.app, this);
+```
+
 Plugins can register custom permission definitions, permission-gated sandbox functions, and JSON-safe sandbox globals through the caller API returned by `forPlugin(this)`. Custom functions must use JSON-safe request and response validators, referenced by Safe JS validator ID or supplied as custom validation functions. Safe JS does not expose Zod on the public plugin API. Registered functions and globals are removed when the caller plugin unloads.
 
 Built-in validator IDs include `json:value`, `json:record`, `rpc:emptyParams`, `rpc:pathParams`, `rpc:optionalPathParams`, `response:ok`, `storage:key`, `storage:value`, `vault:path`, and `vault:optionalPath`.
@@ -112,6 +133,14 @@ Please report bugs via the issues page on GitHub. Report security issues respons
 Parts of this plugin were vibe coded with AI assistance. Security-sensitive code still requires human review, tests, and conservative judgment; AI assistance is not a security guarantee.
 
 ## Development
+
+This repo uses `packages/safe-js-api` as a Git submodule for the installable API helper package. After cloning, initialize dependencies with:
+
+```sh
+bun run deps:init
+```
+
+When the public API changes, edit the submodule package source directly, run `bun run api:build`, commit and tag the API package repo, then commit the updated submodule pointer in this repo.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

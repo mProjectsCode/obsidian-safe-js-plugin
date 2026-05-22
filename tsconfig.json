@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
 		"paths": {
+			"@lemons_dev/obsidian-safe-js-api": ["./packages/safe-js-api/src"],
 			"packages/*": ["./packages/*"],
 			"tests/*": ["./tests/*"]
 		},

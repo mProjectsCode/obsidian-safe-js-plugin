@@ -1,58 +1,39 @@
 import type { Plugin } from 'obsidian';
-import type { SafeJsExecutionOptions, SafeJsExecutionResult } from 'packages/obsidian/src/execution/contracts';
 import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
-import type { PermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
+import type { RpcMethodDefinition, RpcRegistrationOwner, RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 import type {
-	RpcContext,
-	RpcMethodDefinition,
-	RpcRegistrationOwner,
-	RpcRegistry,
-	SafeJsRegistration,
-	SandboxGlobalRegistration,
-} from 'packages/obsidian/src/rpc/rpc-registry';
-import type {
+	PermissionDefinition,
 	SafeJsValidationContext,
 	SafeJsValidationFunction,
 	SafeJsValidationResult,
 	SafeJsValidator,
 	SafeJsValidatorReference,
-} from 'packages/obsidian/src/rpc/validators';
+	SafeJsCallerApi,
+	SafeJsExecutionOptions,
+	SafeJsExecutionResult,
+	SafeJsPublicApi,
+	SafeJsRegistration,
+	SandboxFunctionDefinition,
+	SandboxGlobalDefinition,
+	SandboxValidatorReference,
+} from 'packages/safe-js-api/src';
 
-export interface SafeJsPublicApi {
-	forPlugin(plugin: Plugin): SafeJsCallerApi;
-}
-
-export interface SafeJsCallerApi {
-	execute(code: string, options?: SafeJsExecutionOptions): Promise<SafeJsExecutionResult>;
-	validate<T = unknown>(validator: SafeJsValidatorReference<T>, value: unknown, context?: SafeJsValidationContext): SafeJsValidationResult<T>;
-	getValidatorIds(): string[];
-	registerPermission(definition: PermissionDefinition): SafeJsRegistration;
-	registerSandboxFunction<TParams = unknown, TResult = unknown>(definition: SandboxFunctionDefinition<TParams, TResult>): SafeJsRegistration;
-	registerSandboxGlobal(definition: SandboxGlobalDefinition): SafeJsRegistration;
-}
-
-export type SandboxValidatorReference<T = unknown> = string | SafeJsValidator<T> | SafeJsValidationFunction<T>;
-
-export interface SandboxCallContext extends RpcContext {
-	callerPluginId: string;
-	callerPluginName: string;
-}
-
-export interface SandboxFunctionDefinition<TParams = unknown, TResult = unknown> {
-	method: string;
-	permission: PermissionDefinition['id'];
-	namespace: string;
-	functionName: string;
-	description: string;
-	usage: string;
-	paramStyle: 'object' | 'path' | 'optionalPath' | 'args';
-	argNames?: string[];
-	requestValidator: SandboxValidatorReference<TParams>;
-	responseValidator: SandboxValidatorReference<TResult>;
-	handler(params: TParams, context: SandboxCallContext): Promise<TResult> | TResult;
-}
-
-export type SandboxGlobalDefinition = SandboxGlobalRegistration;
+export type {
+	PermissionDefinition,
+	SafeJsCallerApi,
+	SafeJsExecutionOptions,
+	SafeJsExecutionResult,
+	SafeJsPublicApi,
+	SafeJsRegistration,
+	SafeJsValidationContext,
+	SafeJsValidationFunction,
+	SafeJsValidationResult,
+	SafeJsValidator,
+	SafeJsValidatorReference,
+	SandboxFunctionDefinition,
+	SandboxGlobalDefinition,
+	SandboxValidatorReference,
+};
 
 export interface SafeJsPublicApiDependencies {
 	executionService: SafeJsExecutionService;

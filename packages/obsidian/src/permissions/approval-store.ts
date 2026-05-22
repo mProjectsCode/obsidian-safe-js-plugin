@@ -121,7 +121,16 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 	}
 
 	load(subject: PermissionApprovalSubject): PermissionApproval | null {
-		const rawValue = this.storage.get(`${STORAGE_PREFIX}${approvalStorageId(subject)}`);
+		const key = `${STORAGE_PREFIX}${approvalStorageId(subject)}`;
+		if (!this.isApprovalIndexed(key)) {
+			if (this.storage.get(key) !== null) {
+				this.storage.delete(key);
+			}
+
+			return null;
+		}
+
+		const rawValue = this.storage.get(key);
 		if (!isPermissionApprovalRecord(rawValue)) {
 			return null;
 		}
@@ -194,6 +203,10 @@ export class LocalStoragePermissionApprovalStore implements PermissionApprovalSt
 
 	private getApprovalKeys(): string[] {
 		return this.storage.keys().filter(key => key.startsWith(STORAGE_PREFIX));
+	}
+
+	private isApprovalIndexed(key: string): boolean {
+		return this.getApprovalKeys().includes(key);
 	}
 
 	private loadByStorageId(storageId: string): PermissionApproval | null {
