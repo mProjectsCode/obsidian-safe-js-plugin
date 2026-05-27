@@ -99,7 +99,7 @@ function uniqueScriptId(baseId: string, existingIds: readonly string[]): string 
 	return `${baseId}-${index}`;
 }
 
-function displayNameFromPath(path: string): string {
+export function displayNameFromPath(path: string): string {
 	const fileName = path.split('/').pop() ?? path;
 	return fileName.replace(/\.js$/iu, '') || 'Script';
 }

@@ -53,7 +53,11 @@ function normalizeParams(binding: WorkerRpcBinding, args: unknown[]): JsonValue 
 	}
 
 	const params = args[0] ?? {};
-	return isJsonValue(params) ? params : {};
+	if (!isJsonValue(params)) {
+		throw new Error('RPC object parameters must be JSON-safe.');
+	}
+
+	return params;
 }
 
 function normalizeNamedArgs(binding: WorkerRpcBinding, args: unknown[]): JsonValue {
@@ -62,7 +66,11 @@ function normalizeNamedArgs(binding: WorkerRpcBinding, args: unknown[]): JsonVal
 	for (const [index, name] of argNames.entries()) {
 		const value = args[index];
 		if (value !== undefined) {
-			params[name] = isJsonValue(value) ? value : null;
+			if (!isJsonValue(value)) {
+				throw new Error(`RPC argument '${name}' must be JSON-safe.`);
+			}
+
+			params[name] = value;
 		}
 	}
 

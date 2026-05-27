@@ -110,52 +110,7 @@ export class WorkerExecutionSession {
 
 			cleanupCallbacks.push(
 				worker.onMessage(message => {
-					const parsedMessage = workerToHostMessageSchema.safeParse(message);
-					if (!parsedMessage.success) {
-						settle({
-							status: 'validation-error',
-							codeHash: options.codeHash,
-							message: 'Worker sent an invalid message.',
-							permissions: [...options.grantedPermissions],
-							elapsedMs: this.now() - options.startedAt,
-						});
-						return;
-					}
-
-					if (parsedMessage.data.executionId !== executionId) {
-						settle({
-							status: 'validation-error',
-							codeHash: options.codeHash,
-							message: 'Worker sent a message for an unknown execution.',
-							permissions: [...options.grantedPermissions],
-							elapsedMs: this.now() - options.startedAt,
-						});
-						return;
-					}
-
-					if (parsedMessage.data.type === 'rpc-request') {
-						this.handleRpcRequest(parsedMessage.data, executionId, options, abortController, () => settled, worker.postMessage.bind(worker));
-						return;
-					}
-
-					if (parsedMessage.data.ok) {
-						settle({
-							status: 'success',
-							codeHash: options.codeHash,
-							value: parsedMessage.data.value,
-							permissions: [...options.grantedPermissions],
-							elapsedMs: this.now() - options.startedAt,
-						});
-						return;
-					}
-
-					settle({
-						status: 'runtime-error',
-						codeHash: options.codeHash,
-						message: parsedMessage.data.error.message,
-						permissions: [...options.grantedPermissions],
-						elapsedMs: this.now() - options.startedAt,
-					});
+					this.handleWorkerMessage(message, executionId, options, abortController, () => settled, worker.postMessage.bind(worker), settle);
 				}),
 				worker.onError(error => {
 					settle({
@@ -175,6 +130,51 @@ export class WorkerExecutionSession {
 				rpcBindings: this.rpcRegistry.getWorkerBindings(),
 				sandboxGlobals: this.rpcRegistry.getSandboxGlobals(options.grantedPermissions),
 			});
+		});
+	}
+
+	private handleWorkerMessage(
+		message: unknown,
+		executionId: string,
+		options: WorkerExecutionSessionOptions,
+		abortController: AbortController,
+		isSettled: () => boolean,
+		postMessage: (message: HostRpcResponseMessage) => void,
+		settle: (result: SafeJsExecutionResult) => void,
+	): void {
+		const parsedMessage = workerToHostMessageSchema.safeParse(message);
+		if (!parsedMessage.success) {
+			settle(this.createValidationErrorResult(options, 'Worker sent an invalid message.'));
+			return;
+		}
+
+		if (parsedMessage.data.executionId !== executionId) {
+			settle(this.createValidationErrorResult(options, 'Worker sent a message for an unknown execution.'));
+			return;
+		}
+
+		if (parsedMessage.data.type === 'rpc-request') {
+			this.handleRpcRequest(parsedMessage.data, executionId, options, abortController, isSettled, postMessage);
+			return;
+		}
+
+		if (parsedMessage.data.ok) {
+			settle({
+				status: 'success',
+				codeHash: options.codeHash,
+				value: parsedMessage.data.value,
+				permissions: [...options.grantedPermissions],
+				elapsedMs: this.now() - options.startedAt,
+			});
+			return;
+		}
+
+		settle({
+			status: 'runtime-error',
+			codeHash: options.codeHash,
+			message: parsedMessage.data.error.message,
+			permissions: [...options.grantedPermissions],
+			elapsedMs: this.now() - options.startedAt,
 		});
 	}
 
@@ -243,6 +243,16 @@ export class WorkerExecutionSession {
 			message: 'Execution was cancelled.',
 			permissions,
 			elapsedMs: this.now() - startedAt,
+		};
+	}
+
+	private createValidationErrorResult(options: WorkerExecutionSessionOptions, message: string): SafeJsExecutionResult {
+		return {
+			status: 'validation-error',
+			codeHash: options.codeHash,
+			message,
+			permissions: [...options.grantedPermissions],
+			elapsedMs: this.now() - options.startedAt,
 		};
 	}
 }

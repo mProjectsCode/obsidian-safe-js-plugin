@@ -126,8 +126,8 @@ async function waitForWorker(workerFactory: { workers: unknown[] }): Promise<voi
 }
 
 function createRegistry(): RpcRegistry {
-	return new RpcRegistry(
-		[
+	return new RpcRegistry({
+		methods: [
 			{
 				method: 'test:echo',
 				permission: 'test:call',
@@ -143,9 +143,8 @@ function createRegistry(): RpcRegistry {
 				handler: params => params,
 			},
 		],
-		undefined,
-		testValidatorOptions,
-	);
+		validators: testValidatorOptions,
+	});
 }
 
 function createService(options: { promptApproved: boolean; store?: MemoryPermissionApprovalStore; workerFactory?: FakeWorkerFactory }) {
@@ -175,8 +174,8 @@ function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean })
 	const workerFactory = new FakeWorkerFactory();
 	const store = new MemoryPermissionApprovalStore();
 	const service = new SafeJsExecutionService({
-		rpcRegistry: new RpcRegistry(
-			[
+		rpcRegistry: new RpcRegistry({
+			methods: [
 				{
 					method: 'test:echo',
 					permission: 'test:call',
@@ -192,7 +191,7 @@ function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean })
 					handler: params => params,
 				},
 			],
-			[
+			permissionDefinitions: [
 				{
 					id: 'test:call',
 					name: 'Test calls',
@@ -201,8 +200,8 @@ function createLowRiskService(options: { autoAllowLowRiskPermissions: boolean })
 					grantGuidance: 'Grant in tests.',
 				},
 			],
-			testValidatorOptions,
-		),
+			validators: testValidatorOptions,
+		}),
 		approvalStore: store,
 		permissionPrompt: prompt,
 		workerFactory,
@@ -426,8 +425,8 @@ test('measures execution elapsed time after permission approval', async () => {
 	})(true);
 	const workerFactory = new FakeWorkerFactory();
 	const service = new SafeJsExecutionService({
-		rpcRegistry: new RpcRegistry(
-			[
+		rpcRegistry: new RpcRegistry({
+			methods: [
 				{
 					method: 'test:echo',
 					permission: 'test:call',
@@ -446,9 +445,8 @@ test('measures execution elapsed time after permission approval', async () => {
 					},
 				},
 			],
-			undefined,
-			testValidatorOptions,
-		),
+			validators: testValidatorOptions,
+		}),
 		approvalStore: new MemoryPermissionApprovalStore(),
 		permissionPrompt: prompt,
 		workerFactory,

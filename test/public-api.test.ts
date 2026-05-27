@@ -84,7 +84,7 @@ function createPlugin(): { plugin: Plugin; unload(): void } {
 
 test('public caller API stamps execution source with caller plugin metadata', async () => {
 	const executionService = new FakeExecutionService();
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	const { plugin } = createPlugin();
 	const safeJsApi = new DefaultSafeJsPublicApi({
 		executionService: executionService as unknown as SafeJsExecutionService,
@@ -106,7 +106,7 @@ test('public caller API stamps execution source with caller plugin metadata', as
 
 test('public caller API registers owned sandbox functions and cleans them up on unload', async () => {
 	const executionService = new FakeExecutionService();
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	const { plugin, unload } = createPlugin();
 	const callerApi = new DefaultSafeJsPublicApi({
 		executionService: executionService as unknown as SafeJsExecutionService,
@@ -154,7 +154,7 @@ test('public caller API registers owned sandbox functions and cleans them up on 
 
 test('public caller API rejects sandbox functions with unknown permissions', () => {
 	const executionService = new FakeExecutionService();
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	const { plugin } = createPlugin();
 	const callerApi = new DefaultSafeJsPublicApi({
 		executionService: executionService as unknown as SafeJsExecutionService,
@@ -182,7 +182,7 @@ test('public caller API rejects sandbox functions with unknown permissions', () 
 
 test('public caller API exposes built-in validator IDs without exposing zod', () => {
 	const executionService = new FakeExecutionService();
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	const { plugin } = createPlugin();
 	const callerApi = new DefaultSafeJsPublicApi({
 		executionService: executionService as unknown as SafeJsExecutionService,

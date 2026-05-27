@@ -45,7 +45,10 @@ mock.module('obsidian', () => ({
 
 async function createRegistry(): Promise<RpcRegistry> {
 	const { createHelperMethods } = await import('packages/obsidian/src/rpc/obsidian/helper-rpc');
-	return new RpcRegistry(createHelperMethods(), undefined, testValidatorOptions);
+	return new RpcRegistry({
+		methods: createHelperMethods(),
+		validators: testValidatorOptions,
+	});
 }
 
 test('registers helper methods under the helper permission', async () => {

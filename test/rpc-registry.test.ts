@@ -20,8 +20,8 @@ function echoValueValidator(value: unknown): SafeJsValidationResult<EchoValue> {
 }
 
 function createTestRegistry(): RpcRegistry {
-	return new RpcRegistry(
-		[
+	return new RpcRegistry({
+		methods: [
 			{
 				method: 'test:echo',
 				permission: 'test:call',
@@ -38,9 +38,8 @@ function createTestRegistry(): RpcRegistry {
 				handler: params => params,
 			},
 		],
-		undefined,
-		testValidatorOptions,
-	);
+		validators: testValidatorOptions,
+	});
 }
 
 test('dispatches valid RPC calls', async () => {
@@ -94,8 +93,8 @@ test('exposes worker bindings with argument metadata', () => {
 });
 
 test('generates docs from registered permission and method definitions', () => {
-	const registry = new RpcRegistry(
-		[
+	const registry = new RpcRegistry({
+		methods: [
 			{
 				method: 'test:echo',
 				permission: 'test:call',
@@ -111,7 +110,7 @@ test('generates docs from registered permission and method definitions', () => {
 				handler: params => params,
 			},
 		],
-		[
+		permissionDefinitions: [
 			{
 				id: 'test:call',
 				name: 'Test calls',
@@ -120,8 +119,8 @@ test('generates docs from registered permission and method definitions', () => {
 				grantGuidance: 'Grant in tests.',
 			},
 		],
-		testValidatorOptions,
-	);
+		validators: testValidatorOptions,
+	});
 	const docs = registry.getDocs();
 
 	expect(docs).toHaveLength(1);
@@ -130,7 +129,7 @@ test('generates docs from registered permission and method definitions', () => {
 });
 
 test('registers owned custom permissions, methods, and globals', () => {
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	registry.registerPermission(
 		{
 			id: 'plugin:call',
@@ -201,7 +200,7 @@ test('registers owned custom permissions, methods, and globals', () => {
 });
 
 test('exposes standalone built-in permissions', () => {
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 
 	expect(registry.getKnownPermissions()).toContain('output:render-rich');
 	expect(registry.getDocs().find(group => group.permission.id === 'output:render-rich')).toMatchObject({
@@ -244,7 +243,7 @@ test('rejects duplicate sandbox API paths and reserved globals', () => {
 });
 
 test('rejects sandbox globals with non-json values', () => {
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 
 	expect(() => {
 		registry.registerSandboxGlobal({
@@ -256,7 +255,7 @@ test('rejects sandbox globals with non-json values', () => {
 });
 
 test('keeps owned permissions while sandbox globals still reference them', () => {
-	const registry = new RpcRegistry([], undefined, testValidatorOptions);
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
 	registry.registerPermission(
 		{
 			id: 'plugin:shared',
@@ -285,8 +284,8 @@ test('keeps owned permissions while sandbox globals still reference them', () =>
 });
 
 test('dispatches methods that reference built-in validators by id', async () => {
-	const registry = new RpcRegistry(
-		[
+	const registry = new RpcRegistry({
+		methods: [
 			{
 				method: 'test:ping',
 				permission: 'test:call',
@@ -302,9 +301,8 @@ test('dispatches methods that reference built-in validators by id', async () => 
 				handler: () => ({ ok: true }),
 			},
 		],
-		undefined,
-		testValidatorOptions,
-	);
+		validators: testValidatorOptions,
+	});
 
 	expect(await registry.dispatch('test:ping', {}, { grantedPermissions: new Set(['test:call']) })).toEqual({
 		ok: true,
@@ -315,7 +313,7 @@ test('dispatches methods that reference built-in validators by id', async () => 
 
 test('built-in vault path validators read the current config directory', () => {
 	let configDir = '_config-a';
-	const registry = new RpcRegistry([], undefined, createBuiltInValidators({ getConfigDir: () => configDir }));
+	const registry = new RpcRegistry({ validators: createBuiltInValidators({ getConfigDir: () => configDir }) });
 
 	expect(registry.validate('vault:path', '_config-a/plugins/safe-js/data.json')).toMatchObject({
 		success: false,
@@ -338,8 +336,8 @@ test('built-in vault path validators read the current config directory', () => {
 
 test('rejects methods that reference unknown validator ids', () => {
 	expect(() => {
-		new RpcRegistry(
-			[
+		new RpcRegistry({
+			methods: [
 				{
 					method: 'test:bad',
 					permission: 'test:call',
@@ -355,8 +353,7 @@ test('rejects methods that reference unknown validator ids', () => {
 					handler: () => ({ ok: true }),
 				},
 			],
-			undefined,
-			testValidatorOptions,
-		);
+			validators: testValidatorOptions,
+		});
 	}).toThrow("Unknown request validator 'missing:validator'");
 });

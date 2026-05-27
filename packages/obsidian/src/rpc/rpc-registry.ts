@@ -1,5 +1,4 @@
 import type {
-	JsonValue,
 	PermissionDefinition,
 	PermissionId,
 	SafeJsRegistration,
@@ -11,80 +10,33 @@ import type {
 import type { WorkerRpcBinding, WorkerSandboxGlobal } from '@lemons_dev/obsidian-safe-js-api/internal';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { PERMISSION_DEFINITIONS, getPermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
+import type {
+	JsonValue,
+	RpcContext,
+	RpcDispatchResult,
+	RpcDocsPermission,
+	RpcMethodDefinition,
+	RpcRegistrationOwner,
+	RpcRegistryOptions,
+	SandboxGlobalRegistration,
+} from 'packages/obsidian/src/rpc/rpc-registry-types';
 import type { BuiltInValidatorOptions } from 'packages/obsidian/src/rpc/validators';
 import { ValidatorRegistry, createBuiltInValidators } from 'packages/obsidian/src/rpc/validators';
 
 export type { SafeJsRegistration } from '@lemons_dev/obsidian-safe-js-api';
-
-export interface RpcContext {
-	grantedPermissions: ReadonlySet<PermissionId>;
-	codeHash?: string;
-	signal?: AbortSignal;
-}
-
-export interface RpcDispatchSuccess {
-	ok: true;
-	result: JsonValue;
-}
-
-export interface RpcDispatchFailure {
-	ok: false;
-	error: {
-		code: string;
-		message: string;
-	};
-}
-
-export type RpcDispatchResult = RpcDispatchSuccess | RpcDispatchFailure;
-
-export interface RpcMethodDefinition<TParams = unknown, TResult = unknown> {
-	method: string;
-	permission: PermissionId;
-	description: string;
-	usage: string;
-	requestValidator: SafeJsValidatorReference<TParams>;
-	responseValidator: SafeJsValidatorReference<TResult>;
-	binding: Omit<WorkerRpcBinding, 'method' | 'permission'>;
-	handler(params: TParams, context: RpcContext): Promise<TResult> | TResult;
-}
-
-export interface RpcRegistrationOwner {
-	pluginId?: string;
-	pluginName?: string;
-}
-
-export interface SandboxGlobalRegistration {
-	name: string;
-	description: string;
-	value: JsonValue;
-	permission?: PermissionId;
-}
-
-export interface RpcDocsMethod {
-	method: string;
-	apiPath: string;
-	description: string;
-	usage: string;
-	permission: PermissionId;
-	ownerPluginId?: string;
-	ownerPluginName?: string;
-}
-
-export interface RpcDocsPermission {
-	permission: PermissionDefinition;
-	methods: RpcDocsMethod[];
-	globals: RpcDocsGlobal[];
-	ownerPluginId?: string;
-	ownerPluginName?: string;
-}
-
-export interface RpcDocsGlobal {
-	name: string;
-	description: string;
-	permission?: PermissionId;
-	ownerPluginId?: string;
-	ownerPluginName?: string;
-}
+export type {
+	RpcContext,
+	RpcDispatchFailure,
+	RpcDispatchResult,
+	RpcDispatchSuccess,
+	RpcDocsGlobal,
+	RpcDocsMethod,
+	RpcDocsPermission,
+	RpcMethodDefinition,
+	RpcRegistrationOwner,
+	RpcRegistryOptions,
+	SandboxGlobalRegistration,
+} from 'packages/obsidian/src/rpc/rpc-registry-types';
 
 export class RpcRegistry {
 	private readonly methods = new Map<string, RpcMethodDefinition<unknown, unknown>>();
@@ -95,23 +47,19 @@ export class RpcRegistry {
 	private readonly sandboxGlobals = new Map<string, SandboxGlobalRegistration>();
 	private readonly sandboxGlobalOwners = new Map<string, RpcRegistrationOwner>();
 
-	constructor(
-		methods: readonly RpcMethodDefinition[] = [],
-		permissionDefinitions: readonly PermissionDefinition[] = PERMISSION_DEFINITIONS,
-		validatorOptions: BuiltInValidatorOptions | readonly SafeJsValidator[],
-	) {
-		this.validators = new ValidatorRegistry(isValidatorList(validatorOptions) ? validatorOptions : createBuiltInValidators(validatorOptions));
+	constructor(options: RpcRegistryOptions) {
+		this.validators = new ValidatorRegistry(isValidatorList(options.validators) ? options.validators : createBuiltInValidators(options.validators));
 
-		for (const permission of permissionDefinitions) {
+		for (const permission of options.permissionDefinitions ?? PERMISSION_DEFINITIONS) {
 			this.permissionDefinitions.set(permission.id, permission);
 		}
 
-		for (const method of methods) {
-			this.register(method);
+		for (const method of options.methods ?? []) {
+			this.addMethod(method);
 		}
 	}
 
-	register(method: RpcMethodDefinition<unknown, unknown>, owner: RpcRegistrationOwner = {}): void {
+	private addMethod(method: RpcMethodDefinition<unknown, unknown>, owner: RpcRegistrationOwner = {}): void {
 		if (this.methods.has(method.method)) {
 			throw new Error(`Duplicate RPC method '${method.method}'.`);
 		}
@@ -162,7 +110,7 @@ export class RpcRegistry {
 	}
 
 	registerMethod(method: RpcMethodDefinition<unknown, unknown>, owner: RpcRegistrationOwner = {}): SafeJsRegistration {
-		this.register(method, owner);
+		this.addMethod(method, owner);
 
 		return {
 			unregister: (): void => {

@@ -71,8 +71,8 @@ function createSession(workerFactory: WorkerFactory, registry: RpcRegistry): Wor
 }
 
 function createRegistry(): RpcRegistry {
-	return new RpcRegistry(
-		[
+	return new RpcRegistry({
+		methods: [
 			{
 				method: 'vault:read',
 				permission: 'vault:read',
@@ -97,9 +97,8 @@ function createRegistry(): RpcRegistry {
 				},
 			},
 		],
-		undefined,
-		testValidatorOptions,
-	);
+		validators: testValidatorOptions,
+	});
 }
 
 test('sandbox global documentation only advertises the intentional host surface', () => {
