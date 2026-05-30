@@ -1,4 +1,5 @@
 import type { App } from 'obsidian';
+import type { SettingDefinitionItem } from 'obsidian';
 import { PluginSettingTab } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
 import type { PermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
@@ -15,7 +16,7 @@ import { VaultScriptsSettingsSection } from 'packages/obsidian/src/ui/settings/v
 export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
 	private readonly approvalStore: LocalStoragePermissionApprovalStore;
-	private readonly permissionSettingsStore: PermissionSettingsStore;
+	private readonly runtimeSettingsSection: RuntimeSettingsSection;
 	private readonly scriptManager?: VaultScriptManager;
 
 	constructor(
@@ -27,27 +28,42 @@ export class SafeJsSettingTab extends PluginSettingTab {
 		super(app, plugin);
 		this.plugin = plugin;
 		this.approvalStore = new LocalStoragePermissionApprovalStore(new AppPermissionStorage(app));
-		this.permissionSettingsStore = permissionSettingsStore;
+		this.runtimeSettingsSection = new RuntimeSettingsSection(plugin, permissionSettingsStore, () => {
+			this.update();
+		});
 		this.scriptManager = scriptManager;
+	}
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			...this.runtimeSettingsSection.getSettingDefinitions(),
+			...new VaultScriptsSettingsSection(
+				this.app,
+				this.plugin,
+				() => {
+					this.update();
+				},
+				this.scriptManager,
+			).getSettingDefinitions(),
+			...new StoredDataSettingsSection(this.app, this.approvalStore, () => {
+				this.update();
+			}).getSettingDefinitions(),
+		];
+	}
+
+	getControlValue(key: string): unknown {
+		return this.runtimeSettingsSection.getControlValue(key);
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		await this.runtimeSettingsSection.setControlValue(key, value);
 	}
 
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-
-		new RuntimeSettingsSection(this.plugin, this.permissionSettingsStore, () => {
-			this.display();
-		}).render(containerEl);
-		new VaultScriptsSettingsSection(
-			this.app,
-			this.plugin,
-			() => {
-				this.display();
-			},
-			this.scriptManager,
-		).render(containerEl);
-		new StoredDataSettingsSection(this.app, this.approvalStore, () => {
-			this.display();
-		}).render(containerEl);
+		containerEl.createEl('p', {
+			text: 'Safe JS settings require Obsidian 1.13.0 or newer. This app appears to be running an older version.',
+		});
 	}
 }

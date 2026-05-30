@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { Setting, SettingGroup } from 'obsidian';
+import type { SettingDefinitionItem } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
 import type { SafeJsScriptConfig } from 'packages/obsidian/src/scripts/script-settings';
 import { createScriptConfig, displayNameFromPath, isJavaScriptVaultScriptPath } from 'packages/obsidian/src/scripts/script-settings';
@@ -20,49 +20,40 @@ export class VaultScriptsSettingsSection {
 		this.scriptManager = scriptManager;
 	}
 
-	render(containerEl: HTMLElement): void {
-		this.createSection(containerEl, 'Vault scripts');
-		const group = new SettingGroup(containerEl);
-
-		for (const script of this.plugin.settings.scripts) {
-			this.renderVaultScript(group, script);
-		}
-
-		this.renderAddVaultScript(group);
-	}
-
-	private renderVaultScript(group: SettingGroup, script: SafeJsScriptConfig): void {
-		group.addSetting(setting => {
-			setting
-				.setName(script.name)
-				.setDesc(formatVaultScriptDescription(script))
-				.addButton(button =>
-					button.setButtonText('Edit').onClick(() => {
-						this.openEditVaultScriptModal(script);
-					}),
-				)
-				.addButton(button =>
-					button.setButtonText('Remove').onClick(() => {
-						void this.removeVaultScript(script);
-					}),
-				);
-		});
-	}
-
-	private renderAddVaultScript(group: SettingGroup): void {
-		group.addSetting(setting => {
-			setting
-				.setName('Add script')
-				.setDesc('Configure a vault .js file as a command.')
-				.addButton(button =>
-					button
-						.setButtonText('Add script')
-						.setCta()
-						.onClick(() => {
-							this.openAddVaultScriptModal();
-						}),
-				);
-		});
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				type: 'page',
+				name: 'Vault scripts',
+				desc: 'Configure vault .js files as commands.',
+				items: [
+					{
+						type: 'list',
+						emptyState: 'No vault scripts are configured.',
+						addItem: {
+							name: 'Add script',
+							action: (): void => {
+								this.openAddVaultScriptModal();
+							},
+						},
+						onDelete: (index): void => {
+							void this.removeVaultScript(this.plugin.settings.scripts[index]);
+						},
+						items: this.plugin.settings.scripts.map(script => ({
+							name: script.name,
+							desc: formatVaultScriptDescription(script),
+							render: (setting): void => {
+								setting.addExtraButton(button =>
+									button.setIcon('edit').onClick(() => {
+										this.openEditVaultScriptModal(script);
+									}),
+								);
+							},
+						})),
+					},
+				],
+			},
+		];
 	}
 
 	private openAddVaultScriptModal(): void {
@@ -81,7 +72,11 @@ export class VaultScriptsSettingsSection {
 		).open();
 	}
 
-	private async removeVaultScript(script: SafeJsScriptConfig): Promise<void> {
+	private async removeVaultScript(script: SafeJsScriptConfig | undefined): Promise<void> {
+		if (script === undefined) {
+			return;
+		}
+
 		this.plugin.settings.scripts = this.plugin.settings.scripts.filter(candidate => candidate.id !== script.id);
 		await this.saveScriptSettings();
 		this.onSettingsChanged();
@@ -142,10 +137,6 @@ export class VaultScriptsSettingsSection {
 	private async saveScriptSettings(): Promise<void> {
 		await this.plugin.saveSettings();
 		this.scriptManager?.reloadCommands();
-	}
-
-	private createSection(containerEl: HTMLElement, heading: string): void {
-		new Setting(containerEl).setName(heading).setHeading();
 	}
 }
 

@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import type { TextComponent } from 'obsidian';
-import { Modal, Notice, Setting } from 'obsidian';
+import { Modal, Notice, SettingGroup } from 'obsidian';
 import { isJavaScriptVaultScriptPath } from 'packages/obsidian/src/scripts/script-settings';
 
 export interface AddVaultScriptModalValues {
@@ -43,55 +43,64 @@ export class AddVaultScriptModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('h2', { text: this.title });
 		let pathInput: TextComponent | undefined;
+		const group = new SettingGroup(contentEl);
 
-		new Setting(contentEl)
-			.setName('Vault path')
-			.setDesc('Use a vault-relative path that ends in .js.')
-			.addText(text => {
-				pathInput = text;
-				return text
-					.setPlaceholder('Scripts/example.js')
-					.setValue(this.path)
-					.onChange(value => {
-						this.path = value;
-					});
-			});
-
-		new Setting(contentEl)
-			.setName('Command name')
-			.setDesc('Leave blank to use the file name.')
-			.addText(text =>
-				text
-					.setPlaceholder('Example script')
-					.setValue(this.name)
-					.onChange(value => {
-						this.name = value;
-					}),
-			);
-
-		new Setting(contentEl)
-			.setName('Run on startup')
-			.setDesc('Run this script when Obsidian finishes loading.')
-			.addToggle(toggle =>
-				toggle.setValue(this.runOnStartup).onChange(value => {
-					this.runOnStartup = value;
+		group.addSetting(setting =>
+			void setting
+				.setName('Vault path')
+				.setDesc('Use a vault-relative path that ends in .js.')
+				.addText(text => {
+					pathInput = text;
+					return text
+						.setPlaceholder('Scripts/example.js')
+						.setValue(this.path)
+						.onChange(value => {
+							this.path = value;
+						});
 				}),
-			);
+		);
 
-		new Setting(contentEl)
-			.addButton(button =>
-				button.setButtonText('Cancel').onClick(() => {
-					this.close();
-				}),
-			)
-			.addButton(button =>
-				button
-					.setButtonText(this.actionText)
-					.setCta()
-					.onClick(() => {
-						void this.submit();
+		group.addSetting(setting =>
+			void setting
+				.setName('Command name')
+				.setDesc('Leave blank to use the file name.')
+				.addText(text =>
+					text
+						.setPlaceholder('Example script')
+						.setValue(this.name)
+						.onChange(value => {
+							this.name = value;
+						}),
+				),
+		);
+
+		group.addSetting(setting =>
+			void setting
+				.setName('Run on startup')
+				.setDesc('Run this script when Obsidian finishes loading.')
+				.addToggle(toggle =>
+					toggle.setValue(this.runOnStartup).onChange(value => {
+						this.runOnStartup = value;
 					}),
-			);
+				),
+		);
+
+		group.addSetting(setting =>
+			void setting
+				.addButton(button =>
+					button.setButtonText('Cancel').onClick(() => {
+						this.close();
+					}),
+				)
+				.addButton(button =>
+					button
+						.setButtonText(this.actionText)
+						.setCta()
+						.onClick(() => {
+							void this.submit();
+						}),
+				),
+		);
 
 		pathInput?.inputEl.focus();
 	}

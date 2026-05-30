@@ -20,7 +20,7 @@ export default class SafeJsPlugin extends Plugin {
 	api!: SafeJsPublicApi;
 	private executionService!: SafeJsExecutionService;
 	private scriptManager!: VaultScriptManager;
-	settings!: SafeJsSettings;
+	declare settings: SafeJsSettings;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();

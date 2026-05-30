@@ -1,6 +1,6 @@
 import type { PermissionId } from '@lemons_dev/obsidian-safe-js-api';
 import type { App } from 'obsidian';
-import { Modal, Setting } from 'obsidian';
+import { Modal, SettingGroup } from 'obsidian';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
 import { RICH_OUTPUT_PERMISSION } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
@@ -21,17 +21,16 @@ export class ObsidianPermissionPrompt implements PermissionPrompt {
 				return;
 			}
 
-			let modal: PermissionApprovalModal;
+			const modal = new PermissionApprovalModal(this.app, this.rpcRegistry, request, approved => {
+				cleanup();
+				resolve(approved);
+			});
 			const abortListener = (): void => {
 				modal.close();
 			};
 			const cleanup = (): void => {
 				request.signal?.removeEventListener('abort', abortListener);
 			};
-			modal = new PermissionApprovalModal(this.app, this.rpcRegistry, request, approved => {
-				cleanup();
-				resolve(approved);
-			});
 			request.signal?.addEventListener('abort', abortListener, { once: true });
 			modal.open();
 		});
@@ -88,20 +87,23 @@ class PermissionApprovalModal extends Modal {
 			this.renderPermission(list, permission);
 		}
 
-		new Setting(contentEl)
-			.addButton(button =>
-				button.setButtonText('Cancel').onClick(() => {
-					this.resolve(false);
-				}),
-			)
-			.addButton(button =>
-				button
-					.setButtonText('Allow')
-					.setCta()
-					.onClick(() => {
-						this.resolve(true);
+		const group = new SettingGroup(contentEl);
+		group.addSetting(setting =>
+			void setting
+				.addButton(button =>
+					button.setButtonText('Cancel').onClick(() => {
+						this.resolve(false);
 					}),
-			);
+				)
+				.addButton(button =>
+					button
+						.setButtonText('Allow')
+						.setCta()
+						.onClick(() => {
+							this.resolve(true);
+						}),
+				),
+		);
 	}
 
 	onClose(): void {
