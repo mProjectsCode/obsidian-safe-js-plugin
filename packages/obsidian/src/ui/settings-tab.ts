@@ -17,37 +17,36 @@ export class SafeJsSettingTab extends PluginSettingTab {
 	plugin: SafeJsPlugin;
 	private readonly approvalStore: LocalStoragePermissionApprovalStore;
 	private readonly runtimeSettingsSection: RuntimeSettingsSection;
-	private readonly scriptManager?: VaultScriptManager;
+	private readonly storedDataSettingsSection: StoredDataSettingsSection;
+	private readonly vaultScriptsSettingsSection: VaultScriptsSettingsSection;
 
-	constructor(
-		app: App,
-		plugin: SafeJsPlugin,
-		permissionSettingsStore: PermissionSettingsStore = new LocalStoragePermissionSettingsStore(new AppPermissionStorage(app)),
-		scriptManager?: VaultScriptManager,
-	) {
+	constructor(app: App, plugin: SafeJsPlugin, permissionSettingsStore?: PermissionSettingsStore, scriptManager?: VaultScriptManager) {
 		super(app, plugin);
 		this.plugin = plugin;
-		this.approvalStore = new LocalStoragePermissionApprovalStore(new AppPermissionStorage(app));
-		this.runtimeSettingsSection = new RuntimeSettingsSection(plugin, permissionSettingsStore, () => {
+		const permissionStorage = new AppPermissionStorage(app);
+		const resolvedPermissionSettingsStore = permissionSettingsStore ?? new LocalStoragePermissionSettingsStore(permissionStorage);
+		this.approvalStore = new LocalStoragePermissionApprovalStore(permissionStorage);
+		this.runtimeSettingsSection = new RuntimeSettingsSection(plugin, resolvedPermissionSettingsStore, () => {
 			this.update();
 		});
-		this.scriptManager = scriptManager;
+		this.storedDataSettingsSection = new StoredDataSettingsSection(this.app, this.approvalStore, () => {
+			this.update();
+		});
+		this.vaultScriptsSettingsSection = new VaultScriptsSettingsSection(
+			this.app,
+			this.plugin,
+			() => {
+				this.update();
+			},
+			scriptManager,
+		);
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			...this.runtimeSettingsSection.getSettingDefinitions(),
-			...new VaultScriptsSettingsSection(
-				this.app,
-				this.plugin,
-				() => {
-					this.update();
-				},
-				this.scriptManager,
-			).getSettingDefinitions(),
-			...new StoredDataSettingsSection(this.app, this.approvalStore, () => {
-				this.update();
-			}).getSettingDefinitions(),
+			...this.vaultScriptsSettingsSection.getSettingDefinitions(),
+			...this.storedDataSettingsSection.getSettingDefinitions(),
 		];
 	}
 
@@ -60,6 +59,7 @@ export class SafeJsSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		// intentional fallback for when a user somehow manages to circumvent the minimum Obsidian version check and gets here with an unsupported version
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.createEl('p', {

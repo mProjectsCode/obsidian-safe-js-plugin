@@ -4,7 +4,7 @@ import type SafeJsPlugin from 'packages/obsidian/src/main';
 import type { SafeJsScriptConfig } from 'packages/obsidian/src/scripts/script-settings';
 import { createScriptConfig, displayNameFromPath, isJavaScriptVaultScriptPath } from 'packages/obsidian/src/scripts/script-settings';
 import type { VaultScriptManager } from 'packages/obsidian/src/scripts/vault-script-manager';
-import type { AddVaultScriptModalValues } from 'packages/obsidian/src/ui/add-vault-script-modal';
+import type { AddVaultScriptModalOptions, AddVaultScriptModalValues } from 'packages/obsidian/src/ui/add-vault-script-modal';
 import { AddVaultScriptModal } from 'packages/obsidian/src/ui/add-vault-script-modal';
 
 export class VaultScriptsSettingsSection {
@@ -56,9 +56,15 @@ export class VaultScriptsSettingsSection {
 		];
 	}
 
+	private openVaultScriptModal(
+		options: AddVaultScriptModalOptions,
+		onSubmit: (values: AddVaultScriptModalValues) => Promise<{ message?: string; saved: boolean }>,
+	): void {
+		new AddVaultScriptModal(this.app, options, onSubmit).open();
+	}
+
 	private openAddVaultScriptModal(): void {
-		new AddVaultScriptModal(
-			this.app,
+		this.openVaultScriptModal(
 			{
 				actionText: 'Add',
 				initialValues: {
@@ -68,23 +74,12 @@ export class VaultScriptsSettingsSection {
 				},
 				title: 'Add script',
 			},
-			async values => await this.addVaultScript(values),
-		).open();
-	}
-
-	private async removeVaultScript(script: SafeJsScriptConfig | undefined): Promise<void> {
-		if (script === undefined) {
-			return;
-		}
-
-		this.plugin.settings.scripts = this.plugin.settings.scripts.filter(candidate => candidate.id !== script.id);
-		await this.saveScriptSettings();
-		this.onSettingsChanged();
+			values => this.addVaultScript(values),
+		);
 	}
 
 	private openEditVaultScriptModal(script: SafeJsScriptConfig): void {
-		new AddVaultScriptModal(
-			this.app,
+		this.openVaultScriptModal(
 			{
 				actionText: 'Save',
 				initialValues: {
@@ -94,17 +89,26 @@ export class VaultScriptsSettingsSection {
 				},
 				title: 'Edit script',
 			},
-			async values => await this.editVaultScript(script, values),
-		).open();
+			values => this.editVaultScript(script, values),
+		);
+	}
+
+	private async removeVaultScript(script: SafeJsScriptConfig | undefined): Promise<void> {
+		if (script === undefined) {
+			return;
+		}
+
+		this.plugin.settings.scripts = this.plugin.settings.scripts.filter(candidate => candidate.id !== script.id);
+		await this.saveScriptSettings();
 	}
 
 	private async addVaultScript(values: AddVaultScriptModalValues): Promise<{ message?: string; saved: boolean }> {
-		const normalizedPath = values.path.trim();
-		if (normalizedPath === '' || !isJavaScriptVaultScriptPath(normalizedPath)) {
+		const normalizedPath = this.normalizeVaultScriptPath(values.path);
+		if (normalizedPath === undefined) {
 			return { message: 'Enter a vault path ending in .js.', saved: false };
 		}
 
-		if (this.plugin.settings.scripts.some(script => script.path === normalizedPath)) {
+		if (this.hasVaultScriptPath(normalizedPath)) {
 			return { message: 'That script is already configured.', saved: false };
 		}
 
@@ -112,17 +116,16 @@ export class VaultScriptsSettingsSection {
 		script.runOnStartup = values.runOnStartup;
 		this.plugin.settings.scripts = [...this.plugin.settings.scripts, script];
 		await this.saveScriptSettings();
-		this.onSettingsChanged();
 		return { saved: true };
 	}
 
 	private async editVaultScript(script: SafeJsScriptConfig, values: AddVaultScriptModalValues): Promise<{ message?: string; saved: boolean }> {
-		const normalizedPath = values.path.trim();
-		if (normalizedPath === '' || !isJavaScriptVaultScriptPath(normalizedPath)) {
+		const normalizedPath = this.normalizeVaultScriptPath(values.path);
+		if (normalizedPath === undefined) {
 			return { message: 'Enter a vault path ending in .js.', saved: false };
 		}
 
-		if (this.plugin.settings.scripts.some(candidate => candidate.id !== script.id && candidate.path === normalizedPath)) {
+		if (this.hasVaultScriptPath(normalizedPath, script.id)) {
 			return { message: 'That script is already configured.', saved: false };
 		}
 
@@ -130,13 +133,26 @@ export class VaultScriptsSettingsSection {
 		script.path = normalizedPath;
 		script.runOnStartup = values.runOnStartup;
 		await this.saveScriptSettings();
-		this.onSettingsChanged();
 		return { saved: true };
+	}
+
+	private hasVaultScriptPath(path: string, excludedScriptId?: string): boolean {
+		return this.plugin.settings.scripts.some(script => script.id !== excludedScriptId && script.path === path);
+	}
+
+	private normalizeVaultScriptPath(value: string): string | undefined {
+		const normalizedPath = value.trim();
+		if (normalizedPath === '' || !isJavaScriptVaultScriptPath(normalizedPath)) {
+			return undefined;
+		}
+
+		return normalizedPath;
 	}
 
 	private async saveScriptSettings(): Promise<void> {
 		await this.plugin.saveSettings();
 		this.scriptManager?.reloadCommands();
+		this.onSettingsChanged();
 	}
 }
 

@@ -74,23 +74,24 @@ export class ApprovedHashesSettingPage extends SettingPage {
 	private renderApprovalActions(approvals: PermissionApproval[]): void {
 		const group = new SettingGroup(this.containerEl);
 
-		group.addSetting(setting =>
-			void setting
-				.setName('Clear approved hashes')
-				.setDesc(`${formatCount(approvals.length, 'stored approval hash', 'stored approval hashes')}.`)
-				.addButton(button =>
-					button.setButtonText('Clear older than 30 days').onClick(() => {
-						this.clearOldApprovals();
-					}),
-				)
-				.addButton(button =>
-					button
-						.setButtonText('Clear all')
-						.setDestructive()
-						.onClick(() => {
-							this.clearAllApprovals();
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Clear approved hashes')
+					.setDesc(`${formatCount(approvals.length, 'stored approval hash', 'stored approval hashes')}.`)
+					.addButton(button =>
+						button.setButtonText('Clear older than 30 days').onClick(() => {
+							this.clearOldApprovals();
 						}),
-				),
+					)
+					.addButton(button =>
+						button
+							.setButtonText('Clear all')
+							.setDestructive()
+							.onClick(() => {
+								this.clearAllApprovals();
+							}),
+					),
 		);
 	}
 
@@ -152,18 +153,19 @@ export class ApprovedHashesSettingPage extends SettingPage {
 
 		for (const [source, sourceApprovals] of groupApprovalsBySource(approvals)) {
 			const group = new SettingGroup(this.containerEl).setHeading(formatSource(source));
-			group.addSetting(setting =>
-				void setting
-					.setName('Revoke group')
-					.setDesc(formatCount(sourceApprovals.length, 'approval hash'))
-					.addButton(button =>
-						button
-							.setButtonText('Revoke group')
-							.setDestructive()
-							.onClick(() => {
-								this.revokeApprovalGroup(sourceApprovals, source);
-							}),
-					),
+			group.addSetting(
+				setting =>
+					void setting
+						.setName('Revoke group')
+						.setDesc(formatCount(sourceApprovals.length, 'approval hash'))
+						.addButton(button =>
+							button
+								.setButtonText('Revoke group')
+								.setDestructive()
+								.onClick(() => {
+									this.revokeApprovalGroup(sourceApprovals, source);
+								}),
+						),
 			);
 
 			for (const approval of visibleSettingItems(sourceApprovals)) {

@@ -88,21 +88,22 @@ class PermissionApprovalModal extends Modal {
 		}
 
 		const group = new SettingGroup(contentEl);
-		group.addSetting(setting =>
-			void setting
-				.addButton(button =>
-					button.setButtonText('Cancel').onClick(() => {
-						this.resolve(false);
-					}),
-				)
-				.addButton(button =>
-					button
-						.setButtonText('Allow')
-						.setCta()
-						.onClick(() => {
-							this.resolve(true);
+		group.addSetting(
+			setting =>
+				void setting
+					.addButton(button =>
+						button.setButtonText('Cancel').onClick(() => {
+							this.resolve(false);
 						}),
-				),
+					)
+					.addButton(button =>
+						button
+							.setButtonText('Allow')
+							.setCta()
+							.onClick(() => {
+								this.resolve(true);
+							}),
+					),
 		);
 	}
 

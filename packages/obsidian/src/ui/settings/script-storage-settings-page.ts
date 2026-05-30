@@ -64,57 +64,64 @@ export class ScriptStorageSettingPage extends SettingPage {
 	private renderScriptStorageActions(entries: ScriptStorageEntry[]): void {
 		const group = new SettingGroup(this.containerEl);
 
-		group.addSetting(setting =>
-			void setting
-				.setName('Clear script storage')
-				.setDesc(`${formatCount(entries.length, 'indexed storage key')}.`)
-				.addButton(button =>
-					button.setButtonText('Clear older than 30 days').onClick(() => {
-						this.clearOldScriptStorage();
-					}),
-				)
-				.addButton(button =>
-					button
-						.setButtonText('Clear all')
-						.setDestructive()
-						.onClick(() => {
-							this.clearAllScriptStorage();
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Clear script storage')
+					.setDesc(`${formatCount(entries.length, 'indexed storage key')}.`)
+					.addButton(button =>
+						button.setButtonText('Clear older than 30 days').onClick(() => {
+							this.clearOldScriptStorage();
 						}),
-				),
+					)
+					.addButton(button =>
+						button
+							.setButtonText('Clear all')
+							.setDestructive()
+							.onClick(() => {
+								this.clearAllScriptStorage();
+							}),
+					),
 		);
 	}
 
 	private renderScriptStorageFilters(entries: ScriptStorageEntry[]): void {
 		const group = new SettingGroup(this.containerEl);
 
-		group.addSetting(setting => void setting
-			.setName('Search')
-			.setDesc('Filter by key or scope.')
-			.addSearch(search =>
-				search.setValue(this.searchQuery).onChange(value => {
-					this.searchQuery = value;
-					this.display();
-				}),
-			));
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Search')
+					.setDesc('Filter by key or scope.')
+					.addSearch(search =>
+						search.setValue(this.searchQuery).onChange(value => {
+							this.searchQuery = value;
+							this.display();
+						}),
+					),
+		);
 
-		group.addSetting(setting => void setting
-			.setName('Filters')
-			.addDropdown(dropdown =>
-				dropdown
-					.addOptions(this.getScopeFilterOptions(entries))
-					.setValue(this.scopeFilter)
-					.onChange(value => {
-						this.scopeFilter = value;
-						this.display();
-					}),
-			)
-			.addButton(button =>
-				button.setButtonText('Clear filters').onClick(() => {
-					this.scopeFilter = ALL_FILTER_VALUE;
-					this.searchQuery = '';
-					this.display();
-				}),
-			));
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Filters')
+					.addDropdown(dropdown =>
+						dropdown
+							.addOptions(this.getScopeFilterOptions(entries))
+							.setValue(this.scopeFilter)
+							.onChange(value => {
+								this.scopeFilter = value;
+								this.display();
+							}),
+					)
+					.addButton(button =>
+						button.setButtonText('Clear filters').onClick(() => {
+							this.scopeFilter = ALL_FILTER_VALUE;
+							this.searchQuery = '';
+							this.display();
+						}),
+					),
+		);
 	}
 
 	private renderScriptStorageGroups(entries: ScriptStorageEntry[]): void {
@@ -126,29 +133,33 @@ export class ScriptStorageSettingPage extends SettingPage {
 
 		for (const [scope, scopeEntries] of groupEntriesByScope(entries)) {
 			const group = new SettingGroup(this.containerEl).setHeading(formatScope(scope));
-			group.addSetting(setting =>
-				void setting
-					.setName('Clear scope')
-					.setDesc(`${formatCount(scopeEntries.length, 'key')} - ${formatBytes(sumEntryBytes(scopeEntries))}`)
-					.addButton(button =>
-						button
-							.setButtonText('Clear scope')
-							.setDestructive()
-							.onClick(() => {
-								this.clearScriptStorageScope(scope);
-							}),
-					),
+			group.addSetting(
+				setting =>
+					void setting
+						.setName('Clear scope')
+						.setDesc(`${formatCount(scopeEntries.length, 'key')} - ${formatBytes(sumEntryBytes(scopeEntries))}`)
+						.addButton(button =>
+							button
+								.setButtonText('Clear scope')
+								.setDestructive()
+								.onClick(() => {
+									this.clearScriptStorageScope(scope);
+								}),
+						),
 			);
 
 			for (const entry of visibleSettingItems(scopeEntries)) {
-				group.addSetting(setting => void setting
-					.setName(entry.key)
-					.setDesc(`${formatBytes(entry.sizeBytes)} - ${formatDate(entry.updatedAt)}`)
-					.addButton(button =>
-						button.setButtonText('Delete').onClick(() => {
-							this.deleteScriptStorageEntry(entry);
-						}),
-					));
+				group.addSetting(
+					setting =>
+						void setting
+							.setName(entry.key)
+							.setDesc(`${formatBytes(entry.sizeBytes)} - ${formatDate(entry.updatedAt)}`)
+							.addButton(button =>
+								button.setButtonText('Delete').onClick(() => {
+									this.deleteScriptStorageEntry(entry);
+								}),
+							),
+				);
 			}
 
 			renderHiddenSettingItemCount(group, scopeEntries.length - visibleSettingItems(scopeEntries).length, 'storage keys');

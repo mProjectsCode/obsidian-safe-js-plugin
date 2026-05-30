@@ -1,4 +1,4 @@
-import type { SettingDefinitionItem } from 'obsidian';
+import type { SettingDefinitionControl, SettingDefinitionItem } from 'obsidian';
 import type SafeJsPlugin from 'packages/obsidian/src/main';
 import type { PermissionSettingsStore } from 'packages/obsidian/src/permissions/approval-store';
 import type { SafeJsSettings } from 'packages/obsidian/src/settings/settings-schema';
@@ -24,74 +24,85 @@ export class RuntimeSettingsSection {
 			{
 				type: 'group',
 				items: [
-					{
-						name: 'Execution timeouts',
-						desc: 'Cancel scripts that run longer than the configured timeout.',
-						control: { type: 'toggle', key: 'executionTimeoutsEnabled' },
-					},
-					{
-						name: 'Execution timeout',
-						desc: this.executionTimeoutDescription(this.plugin.settings),
-						control: {
-							type: 'number',
-							key: 'executionTimeoutMs',
-							min: 1,
-							placeholder: String(DEFAULT_SETTINGS.executionTimeoutMs),
-							validate: value => (this.isValidTimeoutMs(value) ? undefined : 'Enter a positive timeout in milliseconds.'),
-						},
-					},
-					{
-						name: 'Debug blocks',
-						desc: 'Enable support for the safe-js-debug code block language.',
-						control: { type: 'toggle', key: 'debugBlocksEnabled' },
-					},
-					{
-						name: 'Auto-allow low-risk permissions',
-						desc: 'Allow low-risk permissions without prompting. Approvals are still remembered per script hash on this device.',
-						control: { type: 'toggle', key: AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY },
-					},
+					this.createExecutionTimeoutsSetting(),
+					this.createExecutionTimeoutSetting(),
+					this.createDebugBlocksSetting(),
+					this.createAutoAllowLowRiskPermissionsSetting(),
 				],
 			},
 		];
 	}
 
 	getControlValue(key: string): unknown {
-		if (!isRuntimeControlKey(key)) {
-			return undefined;
+		switch (key) {
+			case AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY:
+				return this.permissionSettingsStore.loadAutoAllowLowRiskPermissions();
+			case 'debugBlocksEnabled':
+			case 'executionTimeoutMs':
+			case 'executionTimeoutsEnabled':
+				return this.plugin.settings[key];
+			default:
+				return undefined;
 		}
-
-		if (key === AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY) {
-			return this.permissionSettingsStore.loadAutoAllowLowRiskPermissions();
-		}
-
-		return this.plugin.settings[key];
 	}
 
 	async setControlValue(key: string, value: unknown): Promise<void> {
-		if (!isRuntimeControlKey(key)) {
-			return;
+		switch (key) {
+			case AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY:
+				this.permissionSettingsStore.saveAutoAllowLowRiskPermissions(value === true);
+				return;
+			case 'debugBlocksEnabled':
+			case 'executionTimeoutsEnabled':
+				await this.saveBooleanSetting(key, value);
+				return;
+			case 'executionTimeoutMs':
+				await this.saveExecutionTimeoutMs(value);
+				return;
+			default:
+				return;
 		}
-
-		if (key === AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY) {
-			this.permissionSettingsStore.saveAutoAllowLowRiskPermissions(value === true);
-			return;
-		}
-
-		if (key === 'executionTimeoutsEnabled') {
-			await this.saveExecutionTimeoutsEnabled(value);
-			return;
-		}
-
-		if (key === 'debugBlocksEnabled') {
-			await this.saveDebugBlocksEnabled(value);
-			return;
-		}
-
-		await this.saveExecutionTimeoutMs(value);
 	}
 
-	private executionTimeoutDescription(settings: SafeJsSettings): string {
-		return settings.executionTimeoutsEnabled
+	private createAutoAllowLowRiskPermissionsSetting(): SettingDefinitionControl<RuntimeControlKey> {
+		return {
+			name: 'Auto-allow low-risk permissions',
+			desc: 'Allow low-risk permissions without prompting. Approvals are still remembered per script hash on this device.',
+			control: { type: 'toggle', key: AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY },
+		};
+	}
+
+	private createDebugBlocksSetting(): SettingDefinitionControl<RuntimeControlKey> {
+		return {
+			name: 'Debug blocks',
+			desc: 'Enable support for the safe-js-debug code block language.',
+			control: { type: 'toggle', key: 'debugBlocksEnabled' },
+		};
+	}
+
+	private createExecutionTimeoutSetting(): SettingDefinitionControl<RuntimeControlKey> {
+		return {
+			name: 'Execution timeout',
+			desc: this.executionTimeoutDescription(),
+			control: {
+				type: 'number',
+				key: 'executionTimeoutMs',
+				min: 1,
+				placeholder: String(DEFAULT_SETTINGS.executionTimeoutMs),
+				validate: value => (this.isValidTimeoutMs(value) ? undefined : 'Enter a positive timeout in milliseconds.'),
+			},
+		};
+	}
+
+	private createExecutionTimeoutsSetting(): SettingDefinitionControl<RuntimeControlKey> {
+		return {
+			name: 'Execution timeouts',
+			desc: 'Cancel scripts that run longer than the configured timeout.',
+			control: { type: 'toggle', key: 'executionTimeoutsEnabled' },
+		};
+	}
+
+	private executionTimeoutDescription(): string {
+		return this.plugin.settings.executionTimeoutsEnabled
 			? 'Maximum time a worker-backed script may run before it is cancelled.'
 			: 'Timeouts are disabled. This value is kept for later use.';
 	}
@@ -100,13 +111,16 @@ export class RuntimeSettingsSection {
 		return Number.isFinite(value) && value > 0;
 	}
 
-	private async saveDebugBlocksEnabled(value: unknown): Promise<void> {
+	private async saveBooleanSetting(key: 'debugBlocksEnabled' | 'executionTimeoutsEnabled', value: unknown): Promise<void> {
 		if (typeof value !== 'boolean') {
 			return;
 		}
 
-		this.plugin.settings.debugBlocksEnabled = value;
+		this.plugin.settings[key] = value;
 		await this.plugin.saveSettings();
+		if (key === 'executionTimeoutsEnabled') {
+			this.onSettingsChanged();
+		}
 	}
 
 	private async saveExecutionTimeoutMs(value: unknown): Promise<void> {
@@ -117,18 +131,4 @@ export class RuntimeSettingsSection {
 		this.plugin.settings.executionTimeoutMs = value;
 		await this.plugin.saveSettings();
 	}
-
-	private async saveExecutionTimeoutsEnabled(value: unknown): Promise<void> {
-		if (typeof value !== 'boolean') {
-			return;
-		}
-
-		this.plugin.settings.executionTimeoutsEnabled = value;
-		await this.plugin.saveSettings();
-		this.onSettingsChanged();
-	}
-}
-
-function isRuntimeControlKey(key: string): key is RuntimeControlKey {
-	return key === AUTO_ALLOW_LOW_RISK_PERMISSIONS_KEY || key === 'debugBlocksEnabled' || key === 'executionTimeoutMs' || key === 'executionTimeoutsEnabled';
 }

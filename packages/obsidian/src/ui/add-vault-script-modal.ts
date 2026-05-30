@@ -45,61 +45,65 @@ export class AddVaultScriptModal extends Modal {
 		let pathInput: TextComponent | undefined;
 		const group = new SettingGroup(contentEl);
 
-		group.addSetting(setting =>
-			void setting
-				.setName('Vault path')
-				.setDesc('Use a vault-relative path that ends in .js.')
-				.addText(text => {
-					pathInput = text;
-					return text
-						.setPlaceholder('Scripts/example.js')
-						.setValue(this.path)
-						.onChange(value => {
-							this.path = value;
-						});
-				}),
-		);
-
-		group.addSetting(setting =>
-			void setting
-				.setName('Command name')
-				.setDesc('Leave blank to use the file name.')
-				.addText(text =>
-					text
-						.setPlaceholder('Example script')
-						.setValue(this.name)
-						.onChange(value => {
-							this.name = value;
-						}),
-				),
-		);
-
-		group.addSetting(setting =>
-			void setting
-				.setName('Run on startup')
-				.setDesc('Run this script when Obsidian finishes loading.')
-				.addToggle(toggle =>
-					toggle.setValue(this.runOnStartup).onChange(value => {
-						this.runOnStartup = value;
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Vault path')
+					.setDesc('Use a vault-relative path that ends in .js.')
+					.addText(text => {
+						pathInput = text;
+						return text
+							.setPlaceholder('Scripts/example.js')
+							.setValue(this.path)
+							.onChange(value => {
+								this.path = value;
+							});
 					}),
-				),
 		);
 
-		group.addSetting(setting =>
-			void setting
-				.addButton(button =>
-					button.setButtonText('Cancel').onClick(() => {
-						this.close();
-					}),
-				)
-				.addButton(button =>
-					button
-						.setButtonText(this.actionText)
-						.setCta()
-						.onClick(() => {
-							void this.submit();
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Command name')
+					.setDesc('Leave blank to use the file name.')
+					.addText(text =>
+						text
+							.setPlaceholder('Example script')
+							.setValue(this.name)
+							.onChange(value => {
+								this.name = value;
+							}),
+					),
+		);
+
+		group.addSetting(
+			setting =>
+				void setting
+					.setName('Run on startup')
+					.setDesc('Run this script when Obsidian finishes loading.')
+					.addToggle(toggle =>
+						toggle.setValue(this.runOnStartup).onChange(value => {
+							this.runOnStartup = value;
 						}),
-				),
+					),
+		);
+
+		group.addSetting(
+			setting =>
+				void setting
+					.addButton(button =>
+						button.setButtonText('Cancel').onClick(() => {
+							this.close();
+						}),
+					)
+					.addButton(button =>
+						button
+							.setButtonText(this.actionText)
+							.setCta()
+							.onClick(() => {
+								void this.submit();
+							}),
+					),
 		);
 
 		pathInput?.inputEl.focus();
