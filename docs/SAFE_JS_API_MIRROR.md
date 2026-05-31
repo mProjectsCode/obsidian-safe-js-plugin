@@ -51,12 +51,6 @@ Read vault structure and file contents. These are allowed to call `Vault` read m
 - [x] `api.vault.list(path?)` mirrors `app.vault.getAllLoadedFiles()` and returns file/folder DTOs.
 - [x] `api.vault.stat(path)` mirrors `app.vault.getAbstractFileByPath(path)` plus `TFile.stat`.
 - [x] `api.vault.exists(path)` mirrors `app.vault.getAbstractFileByPath(path) !== null`.
-- [x] `api.vault.getFile(path)` mirrors `app.vault.getFileByPath(path)` and returns a file DTO or `null`.
-- [x] `api.vault.getFolder(path)` mirrors `app.vault.getFolderByPath(path)` and returns a folder DTO or `null`.
-- [x] `api.vault.getRoot()` mirrors `app.vault.getRoot()` and returns a folder DTO.
-- [x] `api.vault.getFiles()` mirrors `app.vault.getFiles()` and returns file DTOs.
-- [x] `api.vault.getMarkdownFiles()` mirrors `app.vault.getMarkdownFiles()` and returns file DTOs.
-- [x] `api.vault.getFolders(options?)` mirrors `app.vault.getAllFolders(includeRoot?)` and returns folder DTOs.
 
 Read-only implementation guardrail:
 
@@ -65,6 +59,7 @@ Read-only implementation guardrail:
 
 Do not mirror under `vault:read`:
 
+- [x] `app.vault.getFileByPath`, `getFolderByPath`, `getRoot`, `getFiles`, `getMarkdownFiles`, and `getAllFolders` as separate script methods: `api.vault.list`, `api.vault.stat`, and `api.vault.exists` cover the same read surface with fewer aliases.
 - [ ] `app.vault.getResourcePath(file)`: returns a browser resource URI for vault content. Consider a separate `vault:resource` permission if needed.
 - [ ] `app.vault.adapter.read/list/stat/exists`: prefer `Vault` methods so the boundary stays inside Obsidian's vault model.
 - [ ] Vault events: defer until subscription cleanup and data volume limits are designed.
@@ -74,7 +69,6 @@ Do not mirror under `vault:read`:
 Read Obsidian's parsed cache. This can reveal filenames, links, tags, headings, blocks, frontmatter, and note structure, so keep it separate from pure vault existence checks.
 
 - [x] `api.metadata.getFileCache(path)` mirrors `app.metadataCache.getFileCache(file)` and returns a JSON-safe cache DTO.
-- [x] `api.metadata.getCache(path)` mirrors `app.metadataCache.getCache(path)` and returns a JSON-safe cache DTO.
 - [x] `api.metadata.getFirstLinkpathDest(linkpath, sourcePath)` mirrors `app.metadataCache.getFirstLinkpathDest(...)` and returns a file DTO or `null`.
 - [x] `api.metadata.fileToLinktext(path, sourcePath, options?)` mirrors `app.metadataCache.fileToLinktext(...)`.
 - [x] `api.metadata.getResolvedLinks()` mirrors `app.metadataCache.resolvedLinks`.
@@ -89,6 +83,7 @@ Read Obsidian's parsed cache. This can reveal filenames, links, tags, headings, 
 
 Do not mirror:
 
+- [x] `app.metadataCache.getCache(path)` as a separate script method: `api.metadata.getFileCache(path)` is the safer existing-file path.
 - [ ] Metadata events: defer until subscription cleanup and throttling are designed.
 - [ ] `LinkValue.parseFromString(app, ...)`: returns an Obsidian value object. Use plain link parsing DTOs instead.
 
@@ -125,23 +120,23 @@ Do not mirror directly:
 
 Rename or move files and folders.
 
-- [x] `api.vault.rename(path, newPath)` mirrors `app.vault.rename(...)`.
 - [x] `api.fileManager.renameFile(path, newPath)` mirrors `app.fileManager.renameFile(...)` and may update links according to user settings.
 
 Implementation guardrail:
 
+- [x] Do not expose `app.vault.rename(...)` as a separate script method; `api.fileManager.renameFile` is the safer default because it uses Obsidian's link-update behavior.
 - [x] Document that `api.fileManager.renameFile` can modify links in other notes and should not be treated as a simple path metadata change.
 
 ## `vault:delete`
 
-Trash or delete vault entries.
+Trash vault entries using Obsidian deletion settings.
 
-- [x] `api.vault.trash(path, system)` mirrors `app.vault.trash(...)`.
-- [x] `api.vault.delete(path, options?)` mirrors `app.vault.delete(...)`.
 - [x] `api.fileManager.trashFile(path)` mirrors `app.fileManager.trashFile(...)`.
 
 Do not mirror:
 
+- [x] `app.vault.trash(...)` as a separate script method: it asks scripts to choose Obsidian vs system trash instead of respecting the user's configured deletion behavior.
+- [x] `app.vault.delete(...)` as a separate script method: permanent deletion is unnecessary while `api.fileManager.trashFile` exists.
 - [ ] `app.fileManager.promptForDeletion(file)`: host UI flow is better owned by Safe JS permission approval or a dedicated confirmation API.
 
 ## `workspace:read`
@@ -249,11 +244,11 @@ Do not mirror:
 
 Network is off by default and must be explicitly requested and documented.
 
-- [x] `api.network.request(urlOrOptions)` mirrors `request(...)`.
 - [x] `api.network.requestUrl(urlOrOptions)` mirrors `requestUrl(...)` and returns a JSON-safe response DTO.
 
 Implementation guardrail:
 
+- [x] Do not expose `request(...)` as a separate script method; `api.network.requestUrl(...)` returns response text plus status, headers, JSON, and base64 data.
 - [x] Approval copy must say that network access can send script-provided data to external services.
 - [x] If combined with `vault:read`, `metadata:read`, `workspace:read`, or `editor:read`, approval copy must say vault or editor data can be exfiltrated.
 
@@ -275,6 +270,7 @@ Implementation guardrail:
 Read Safe JS storage scoped to the script source hash only. Do not expose arbitrary vault localStorage keys. Do NOT expose the permission storage.
 
 - [x] `api.storage.get(key)` mirrors a Safe JS-owned source-scoped wrapper over `app.loadLocalStorage(...)`.
+- [x] `api.storage.keys()` lists source-scoped Safe JS storage keys.
 
 ## `storage:write`
 
@@ -282,12 +278,14 @@ Write Safe JS storage scoped to the script source hash only.
 
 - [x] `api.storage.set(key, value)` mirrors a Safe JS-owned source-scoped wrapper over `app.saveLocalStorage(...)`.
 - [x] `api.storage.delete(key)` mirrors `app.saveLocalStorage(key, null)` through a Safe JS-owned source-scoped wrapper.
+- [x] `api.storage.clear()` deletes all source-scoped Safe JS storage keys.
 
 ## `storage:global-read`
 
 Read Safe JS storage shared across approved scripts on this device.
 
 - [x] `api.globalStorage.get(key)` mirrors a Safe JS-owned global wrapper over `app.loadLocalStorage(...)`.
+- [x] `api.globalStorage.keys()` lists global Safe JS storage keys.
 
 ## `storage:global-write`
 
@@ -295,6 +293,7 @@ Write Safe JS storage shared across approved scripts on this device.
 
 - [x] `api.globalStorage.set(key, value)` mirrors a Safe JS-owned global wrapper over `app.saveLocalStorage(...)`.
 - [x] `api.globalStorage.delete(key)` mirrors `app.saveLocalStorage(key, null)` through a Safe JS-owned global wrapper.
+- [x] `api.globalStorage.clear()` deletes all global Safe JS storage keys.
 
 Implementation guardrail:
 
@@ -307,13 +306,13 @@ These mirror pure Obsidian helper functions through normal permission-gated RPC 
 
 - [x] `api.path.normalize(path)` mirrors `normalizePath(path)`.
 - [x] `api.link.parseLinktext(linktext)` mirrors `parseLinktext(linktext)`.
-- [x] `api.link.getLinkpath(linktext)` mirrors `getLinkpath(linktext)`.
 - [x] `api.search.prepareSimpleSearch(query, text)` mirrors `prepareSimpleSearch(query)(text)`.
 - [x] `api.search.prepareFuzzySearch(query, text)` mirrors `prepareFuzzySearch(query)(text)`.
 - [x] `api.yaml.parse(yaml)` mirrors `parseYaml(yaml)`.
 - [x] `api.yaml.stringify(value)` mirrors `stringifyYaml(value)`.
 - [ ] `api.html.toMarkdown(html)` mirrors `htmlToMarkdown(html)` if it can run without DOM leakage.
 - [ ] `api.html.sanitize(html)` mirrors `sanitizeHTMLToDom(html)` only if returning sanitized HTML text, not DOM nodes.
+- [x] Do not expose `getLinkpath(linktext)` as a separate script method; `api.link.parseLinktext(linktext).path` covers it.
 
 ## Explicitly out of scope
 

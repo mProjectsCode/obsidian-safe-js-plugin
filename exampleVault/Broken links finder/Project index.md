@@ -1,5 +1,3 @@
-# Project index
-
 Start with the [[Roadmap]] and the [[Research notes]].
 
 The [implementation brief](Implementation%20brief.md) is ready for review.

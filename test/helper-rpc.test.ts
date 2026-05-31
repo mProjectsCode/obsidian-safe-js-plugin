@@ -56,6 +56,7 @@ test('registers helper methods under the helper permission', async () => {
 
 	expect(bindings.map(binding => binding.method)).toContain('path:normalize');
 	expect(bindings.map(binding => binding.method)).toContain('yaml:parse');
+	expect(bindings.map(binding => binding.method)).not.toContain('link:getLinkpath');
 	expect(bindings.every(binding => binding.permission === 'helpers:use')).toBe(true);
 });
 

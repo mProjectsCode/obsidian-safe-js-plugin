@@ -1,4 +1,4 @@
-import { getLinkpath, normalizePath, parseLinktext, parseYaml, prepareFuzzySearch, prepareSimpleSearch, stringifyYaml } from 'obsidian';
+import { normalizePath, parseLinktext, parseYaml, prepareFuzzySearch, prepareSimpleSearch, stringifyYaml } from 'obsidian';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { toJsonValue } from 'packages/obsidian/src/execution/json';
 import { method } from 'packages/obsidian/src/rpc/rpc-method-helpers';
@@ -41,18 +41,6 @@ export function createHelperMethods(): RpcMethodDefinition[] {
 			requestSchema: z.object({ linktext: z.string() }),
 			responseSchema: linktextPartsSchema,
 			handler: params => parseLinktext(params.linktext),
-		}),
-		method({
-			method: 'link:getLinkpath',
-			permission: 'helpers:use',
-			description: 'Return the path portion of wikilink text.',
-			usage: 'api.link.getLinkpath(linktext)',
-			namespace: 'link',
-			functionName: 'getLinkpath',
-			argNames: ['linktext'],
-			requestSchema: z.object({ linktext: z.string() }),
-			responseSchema: z.string(),
-			handler: params => getLinkpath(params.linktext),
 		}),
 		method({
 			method: 'search:prepareSimpleSearch',

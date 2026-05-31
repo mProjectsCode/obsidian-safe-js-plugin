@@ -22,6 +22,21 @@ export function createStorageMethods(app: App): RpcMethodDefinition[] {
 			handler: (params, context) => ({ value: createScopedStorageManager(app, context).get(params.key) }),
 		}),
 		method({
+			method: 'storage:keys',
+			permission: 'storage:read',
+			description: 'List Safe JS storage keys scoped to this script source.',
+			usage: 'api.storage.keys()',
+			namespace: 'storage',
+			functionName: 'keys',
+			requestSchema: z.object({}),
+			responseSchema: z.object({ keys: z.array(storageKeySchema) }),
+			handler: (_params, context) => ({
+				keys: createScopedStorageManager(app, context)
+					.list()
+					.map(entry => entry.key),
+			}),
+		}),
+		method({
 			method: 'storage:set',
 			permission: 'storage:write',
 			description: 'Write a Safe JS storage value scoped to this script source.',
@@ -52,6 +67,19 @@ export function createStorageMethods(app: App): RpcMethodDefinition[] {
 			},
 		}),
 		method({
+			method: 'storage:clear',
+			permission: 'storage:write',
+			description: 'Delete all Safe JS storage values scoped to this script source.',
+			usage: 'api.storage.clear()',
+			namespace: 'storage',
+			functionName: 'clear',
+			requestSchema: z.object({}),
+			responseSchema: z.object({ deleted: z.number().int().min(0) }),
+			handler(_params, context) {
+				return { deleted: createScopedStorageManager(app, context).deleteAll() };
+			},
+		}),
+		method({
 			method: 'globalStorage:get',
 			permission: 'storage:global-read',
 			description: 'Read a Safe JS storage value shared across scripts on this device.',
@@ -62,6 +90,17 @@ export function createStorageMethods(app: App): RpcMethodDefinition[] {
 			requestSchema: z.object({ key: storageKeySchema }),
 			responseSchema: jsonValueResponseSchema,
 			handler: params => ({ value: storageManager.get(params.key) }),
+		}),
+		method({
+			method: 'globalStorage:keys',
+			permission: 'storage:global-read',
+			description: 'List Safe JS storage keys shared across scripts on this device.',
+			usage: 'api.globalStorage.keys()',
+			namespace: 'globalStorage',
+			functionName: 'keys',
+			requestSchema: z.object({}),
+			responseSchema: z.object({ keys: z.array(storageKeySchema) }),
+			handler: () => ({ keys: storageManager.list().map(entry => entry.key) }),
 		}),
 		method({
 			method: 'globalStorage:set',
@@ -91,6 +130,19 @@ export function createStorageMethods(app: App): RpcMethodDefinition[] {
 			handler(params) {
 				storageManager.delete(params.key);
 				return ok();
+			},
+		}),
+		method({
+			method: 'globalStorage:clear',
+			permission: 'storage:global-write',
+			description: 'Delete all Safe JS storage values shared across scripts on this device.',
+			usage: 'api.globalStorage.clear()',
+			namespace: 'globalStorage',
+			functionName: 'clear',
+			requestSchema: z.object({}),
+			responseSchema: z.object({ deleted: z.number().int().min(0) }),
+			handler() {
+				return { deleted: storageManager.deleteAll() };
 			},
 		}),
 	];

@@ -39,21 +39,6 @@ export function createMetadataMethods(app: App): RpcMethodDefinition[] {
 			handler: params => ({ value: toJsonValue(app.metadataCache.getFileCache(requireFile(app, params.path))) }),
 		}),
 		method({
-			method: 'metadata:getCache',
-			permission: 'metadata:read',
-			description: 'Read Obsidian metadata cache by path.',
-			usage: 'api.metadata.getCache(path)',
-			namespace: 'metadata',
-			functionName: 'getCache',
-			paramStyle: 'path',
-			requestSchema: pathParamsSchema,
-			responseSchema: jsonValueResponseSchema,
-			handler(params) {
-				const path = validateVaultPath(params.path, { configDir: app.vault.configDir });
-				return { value: toJsonValue(app.metadataCache.getCache(path)) };
-			},
-		}),
-		method({
 			method: 'metadata:getFirstLinkpathDest',
 			permission: 'metadata:read',
 			description: 'Resolve a wiki-style link path from a source note.',

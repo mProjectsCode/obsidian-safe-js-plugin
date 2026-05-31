@@ -2,14 +2,7 @@ import type { App } from 'obsidian';
 import {
 	abstractFileDtoSchema,
 	abstractFileToDto,
-	emptyParamsSchema,
 	encodeArrayBuffer,
-	fileDtoSchema,
-	fileToDto,
-	folderDtoSchema,
-	folderToDto,
-	nullableFileDtoSchema,
-	nullableFolderDtoSchema,
 	optionalPathParamsSchema,
 	pathParamsSchema,
 	requireAbstractFile,
@@ -17,7 +10,7 @@ import {
 	isSafeVaultPath,
 	validateVaultPath,
 } from 'packages/obsidian/src/rpc/rpc-common';
-import { booleanResponseSchema, method, sortByPath } from 'packages/obsidian/src/rpc/rpc-method-helpers';
+import { booleanResponseSchema, method } from 'packages/obsidian/src/rpc/rpc-method-helpers';
 import type { RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
 import { z } from 'zod';
 
@@ -116,100 +109,6 @@ export function createVaultReadMethods(app: App): RpcMethodDefinition[] {
 				const path = validateVaultPath(params.path, { configDir: app.vault.configDir });
 				return { value: app.vault.getAbstractFileByPath(path) !== null };
 			},
-		}),
-		method({
-			method: 'vault:getFile',
-			permission: 'vault:read',
-			description: 'Read file metadata for a path, or null when it is not a file.',
-			usage: 'api.vault.getFile(path)',
-			namespace: 'vault',
-			functionName: 'getFile',
-			paramStyle: 'path',
-			requestSchema: pathParamsSchema,
-			responseSchema: nullableFileDtoSchema,
-			handler(params) {
-				const path = validateVaultPath(params.path, { configDir: app.vault.configDir });
-				const file = app.vault.getFileByPath(path);
-				return file === null ? null : fileToDto(file);
-			},
-		}),
-		method({
-			method: 'vault:getFolder',
-			permission: 'vault:read',
-			description: 'Read folder metadata for a path, or null when it is not a folder.',
-			usage: 'api.vault.getFolder(path)',
-			namespace: 'vault',
-			functionName: 'getFolder',
-			paramStyle: 'path',
-			requestSchema: pathParamsSchema,
-			responseSchema: nullableFolderDtoSchema,
-			handler(params) {
-				const path = validateVaultPath(params.path, { allowEmpty: true, configDir: app.vault.configDir, label: 'Folder path' });
-				const folder = path === '' ? app.vault.getRoot() : app.vault.getFolderByPath(path);
-				return folder === null ? null : folderToDto(folder, true, child => isSafeVaultPath(app, child.path));
-			},
-		}),
-		method({
-			method: 'vault:getRoot',
-			permission: 'vault:read',
-			description: 'Read metadata for the vault root folder.',
-			usage: 'api.vault.getRoot()',
-			namespace: 'vault',
-			functionName: 'getRoot',
-			requestSchema: emptyParamsSchema,
-			responseSchema: folderDtoSchema,
-			handler: () => folderToDto(app.vault.getRoot(), true, child => isSafeVaultPath(app, child.path)),
-		}),
-		method({
-			method: 'vault:getFiles',
-			permission: 'vault:read',
-			description: 'List all vault files.',
-			usage: 'api.vault.getFiles()',
-			namespace: 'vault',
-			functionName: 'getFiles',
-			requestSchema: emptyParamsSchema,
-			responseSchema: z.object({ files: z.array(fileDtoSchema) }),
-			handler: () => ({
-				files: app.vault
-					.getFiles()
-					.filter(file => isSafeVaultPath(app, file.path))
-					.map(fileToDto)
-					.sort(sortByPath),
-			}),
-		}),
-		method({
-			method: 'vault:getMarkdownFiles',
-			permission: 'vault:read',
-			description: 'List all Markdown files in the vault.',
-			usage: 'api.vault.getMarkdownFiles()',
-			namespace: 'vault',
-			functionName: 'getMarkdownFiles',
-			requestSchema: emptyParamsSchema,
-			responseSchema: z.object({ files: z.array(fileDtoSchema) }),
-			handler: () => ({
-				files: app.vault
-					.getMarkdownFiles()
-					.filter(file => isSafeVaultPath(app, file.path))
-					.map(fileToDto)
-					.sort(sortByPath),
-			}),
-		}),
-		method({
-			method: 'vault:getFolders',
-			permission: 'vault:read',
-			description: 'List all vault folders, optionally including the root folder.',
-			usage: 'api.vault.getFolders({ includeRoot: true })',
-			namespace: 'vault',
-			functionName: 'getFolders',
-			requestSchema: z.object({ includeRoot: z.boolean().optional() }),
-			responseSchema: z.object({ folders: z.array(folderDtoSchema) }),
-			handler: params => ({
-				folders: app.vault
-					.getAllFolders(params.includeRoot)
-					.filter(folder => folder.isRoot() || isSafeVaultPath(app, folder.path))
-					.map(folder => folderToDto(folder))
-					.sort(sortByPath),
-			}),
 		}),
 	];
 }

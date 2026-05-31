@@ -1,18 +1,17 @@
-# Find broken links
-
-This Safe JS block scans only notes in this folder and reports links that point to missing notes in the same folder.
+This Safe JS block scans only notes in this folder and reports links that point to missing notes in the same folder as a nested Markdown list.
 
 ```safe-js
 // @permission vault:read
 // @permission metadata:read
 // @permission helpers:use
+// @permission output:render-rich
 
 const folder = "Broken links finder";
 const listed = await api.vault.list(folder);
 const notes = listed.files
 	.filter(file => file.type === "file" && file.extension === "md")
 	.sort((left, right) => left.path.localeCompare(right.path));
-const brokenLinks = [];
+const brokenLinksByNote = new Map();
 
 function decodeLinkTarget(target) {
 	try {
@@ -27,7 +26,8 @@ function isExternalLink(target) {
 }
 
 async function scopedTargetPath(linkText, sourcePath) {
-	let target = await api.link.getLinkpath(linkText);
+	const link = await api.link.parseLinktext(linkText);
+	let target = link.path;
 	if (target.length === 0 || target.startsWith("#") || isExternalLink(target)) {
 		return null;
 	}
@@ -53,6 +53,24 @@ async function scopedTargetPath(linkText, sourcePath) {
 	return await api.path.normalize(`${folder}/${target}`);
 }
 
+function basename(path) {
+	const parts = path.split("/");
+	return parts[parts.length - 1] ?? path;
+}
+
+function displayName(path) {
+	const name = basename(path);
+	return name.endsWith(".md") ? name.slice(0, -3) : name;
+}
+
+function escapeWikiAlias(alias) {
+	return alias.replace(/\|/gu, "\\|").replace(/\n/gu, " ");
+}
+
+function wikiLink(path, alias = displayName(path)) {
+	return `[[${path}|${escapeWikiAlias(alias)}]]`;
+}
+
 function collectCachedLinks(cache) {
 	const links = [];
 	for (const entry of [...(cache?.links ?? []), ...(cache?.embeds ?? [])]) {
@@ -74,14 +92,30 @@ for (const note of notes) {
 		const targetPath = await scopedTargetPath(link, note.path);
 		const resolved = targetPath === null ? null : await api.metadata.getFirstLinkpathDest(targetPath, note.path);
 		if (targetPath !== null && isInScope(targetPath) && resolved === null) {
-			brokenLinks.push(`${note.path} -> ${link}`);
+			const brokenLinks = brokenLinksByNote.get(note.path) ?? [];
+			brokenLinks.push({ link, targetPath });
+			brokenLinksByNote.set(note.path, brokenLinks);
 		}
 	}
 }
 
-if (brokenLinks.length === 0) {
-	return `No broken links found in ${folder}.`;
+if (brokenLinksByNote.size === 0) {
+	return {
+		format: "markdown",
+		content: `No broken links found in ${folder}.`,
+	};
 }
 
-return [`Broken links in ${folder}:`, "", ...brokenLinks].join("\n");
+const lines = [`Broken links in ${folder}:`, ""];
+for (const [notePath, brokenLinks] of [...brokenLinksByNote.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+	lines.push(`- ${wikiLink(notePath)}`);
+	for (const brokenLink of brokenLinks.sort((left, right) => left.targetPath.localeCompare(right.targetPath))) {
+		lines.push(`  - ${wikiLink(brokenLink.targetPath, brokenLink.link)}`);
+	}
+}
+
+return {
+	format: "markdown",
+	content: lines.join("\n"),
+};
 ```

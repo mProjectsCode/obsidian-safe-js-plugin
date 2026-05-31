@@ -50,7 +50,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 	{
 		id: 'vault:delete',
 		name: 'Delete vault items',
-		description: 'Trash or permanently delete files and folders from the vault.',
+		description: 'Move files and folders to trash using Obsidian deletion settings.',
 		severity: 'critical',
 		grantGuidance: "Grant this only when deletion is the script's main purpose and you trust the source.",
 	},

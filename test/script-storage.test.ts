@@ -1,7 +1,43 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import type { App } from 'obsidian';
+import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 import { storageKeySchema } from 'packages/obsidian/src/storage/storage-validation';
 import { ScriptStorageManager, scopedScriptStorageKey, scriptStorageKey } from 'packages/obsidian/src/storage/script-storage';
+
+mock.module('obsidian', () => ({
+	TFile: class TFile {},
+	TFolder: class TFolder {},
+	arrayBufferToBase64(_buffer: ArrayBuffer): string {
+		return '';
+	},
+	base64ToArrayBuffer(_base64: string): ArrayBuffer {
+		return new ArrayBuffer(0);
+	},
+	normalizePath(path: string): string {
+		return path.replace(/\\/gu, '/').replace(/\/+/gu, '/').replace('/./', '/');
+	},
+	parseLinktext(linktext: string): { path: string; subpath: string } {
+		const withoutAlias = linktext.split('|')[0] ?? '';
+		const [path = '', subpath = ''] = withoutAlias.split('#');
+		return { path, subpath: subpath === '' ? '' : `#${subpath}` };
+	},
+	parseYaml(_yaml: string): unknown {
+		return {
+			fruit: 'apple',
+			count: 2,
+		};
+	},
+	prepareFuzzySearch(_query: string): (text: string) => { score: number; matches: [number, number][] } | null {
+		return text => (text.length > 0 ? { score: 1, matches: [[0, 5]] } : null);
+	},
+	prepareSimpleSearch(_query: string): (text: string) => { score: number; matches: [number, number][] } | null {
+		return text => (text.length > 0 ? { score: 1, matches: [[0, 5]] } : null);
+	},
+	stringifyYaml(value: unknown): string {
+		const record = value as { fruit?: string };
+		return `fruit: ${record.fruit ?? ''}\n`;
+	},
+}));
 
 class FakeAppLocalStorage {
 	private readonly values = new Map<string, unknown>();
@@ -60,4 +96,33 @@ test('rejects reserved storage keys that can cross storage scopes', () => {
 	expect(storageKeySchema.safeParse('__index').success).toBe(false);
 	expect(storageKeySchema.safeParse('__scopes').success).toBe(false);
 	expect(storageKeySchema.safeParse('scoped:hash:key').success).toBe(false);
+});
+
+test('storage RPC can list and clear scoped and global keys', async () => {
+	const app = new FakeAppLocalStorage() as unknown as App;
+	const { createStorageMethods } = await import('packages/obsidian/src/rpc/obsidian/storage-rpc');
+	const registry = new RpcRegistry({
+		methods: createStorageMethods(app),
+		validators: { getConfigDir: () => '.obsidian' },
+	});
+
+	await registry.dispatch('storage:set', { key: 'scoped-key', value: 'scoped' }, { codeHash: 'hash:a', grantedPermissions: new Set(['storage:write']) });
+	await registry.dispatch('globalStorage:set', { key: 'global-key', value: 'global' }, { grantedPermissions: new Set(['storage:global-write']) });
+
+	expect(await registry.dispatch('storage:keys', {}, { codeHash: 'hash:a', grantedPermissions: new Set(['storage:read']) })).toEqual({
+		ok: true,
+		result: { keys: ['scoped-key'] },
+	});
+	expect(await registry.dispatch('globalStorage:keys', {}, { grantedPermissions: new Set(['storage:global-read']) })).toEqual({
+		ok: true,
+		result: { keys: ['global-key'] },
+	});
+	expect(await registry.dispatch('storage:clear', {}, { codeHash: 'hash:a', grantedPermissions: new Set(['storage:write']) })).toEqual({
+		ok: true,
+		result: { deleted: 1 },
+	});
+	expect(await registry.dispatch('globalStorage:clear', {}, { grantedPermissions: new Set(['storage:global-write']) })).toEqual({
+		ok: true,
+		result: { deleted: 1 },
+	});
 });

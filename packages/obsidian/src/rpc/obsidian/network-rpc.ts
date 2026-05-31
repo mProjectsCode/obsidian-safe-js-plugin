@@ -1,7 +1,7 @@
-import { request, requestUrl } from 'obsidian';
+import { requestUrl } from 'obsidian';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
 import { encodeArrayBuffer, toJsonValue } from 'packages/obsidian/src/rpc/rpc-common';
-import { httpUrlSchema, method, optionalBooleanSchema, optionalStringSchema, stringResponseSchema } from 'packages/obsidian/src/rpc/rpc-method-helpers';
+import { httpUrlSchema, method, optionalBooleanSchema, optionalStringSchema } from 'packages/obsidian/src/rpc/rpc-method-helpers';
 import type { RpcMethodDefinition } from 'packages/obsidian/src/rpc/rpc-registry';
 import { z } from 'zod';
 
@@ -16,20 +16,6 @@ export function createNetworkMethods(): RpcMethodDefinition[] {
 	});
 
 	return [
-		method({
-			method: 'network:request',
-			permission: 'network:request',
-			description: 'Make an HTTP or HTTPS request and return response text.',
-			usage: 'api.network.request(urlOrOptions)',
-			namespace: 'network',
-			functionName: 'request',
-			argNames: ['urlOrOptions'],
-			requestSchema: z.object({ urlOrOptions: z.union([httpUrlSchema, requestParamsSchema]) }),
-			responseSchema: stringResponseSchema,
-			async handler(params) {
-				return { value: await request(params.urlOrOptions) };
-			},
-		}),
 		method({
 			method: 'network:requestUrl',
 			permission: 'network:request',
