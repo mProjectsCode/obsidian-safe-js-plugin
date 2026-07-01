@@ -1,10 +1,18 @@
-import type { PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
+import type {
+	CompoundPermissionRuleDefinition,
+	JsonValue,
+	PermissionId,
+	SafeJsExecutionOptions,
+	SafeJsExecutionResult,
+	SafeJsExpressionOptions,
+} from '@lemons_dev/obsidian-safe-js-api';
+import { validateExpressionInputs } from 'packages/obsidian/src/execution/expression-inputs';
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import type { ActiveExecution } from 'packages/obsidian/src/execution/worker-execution-session';
 import { WorkerExecutionSession } from 'packages/obsidian/src/execution/worker-execution-session';
 import type { PermissionApprovalStore, PermissionApprovalSubject } from 'packages/obsidian/src/permissions/approval-store';
 import { hashCode } from 'packages/obsidian/src/permissions/hash';
-import { assertKnownPermissions, expandPermissionGroups, parseLeadingPermissions } from 'packages/obsidian/src/permissions/permissions';
+import { PermissionPolicyError, PermissionPolicyResolver } from 'packages/obsidian/src/permissions/permission-policy';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export interface PermissionPromptRequest {
@@ -13,6 +21,7 @@ export interface PermissionPromptRequest {
 	callerPluginId?: string;
 	callerPluginName?: string;
 	permissions: PermissionId[];
+	compoundRules: CompoundPermissionRuleDefinition[];
 	source?: SafeJsExecutionOptions['source'];
 	signal?: AbortSignal;
 }
@@ -35,6 +44,13 @@ export interface SafeJsExecutionServiceDependencies {
 	clearExecutionTimeout?(timeoutId: number): void;
 }
 
+interface PermissionApprovalPlan {
+	approvedPermissions: Set<PermissionId>;
+	autoApprovedPermissions: PermissionId[];
+	compoundRules: CompoundPermissionRuleDefinition[];
+	promptedPermissions: PermissionId[];
+}
+
 export class SafeJsExecutionService {
 	private readonly approvalStore: PermissionApprovalStore;
 	private readonly createExecutionId: () => string;
@@ -43,6 +59,7 @@ export class SafeJsExecutionService {
 	private readonly hashSource: (code: string) => Promise<string>;
 	private readonly now: () => number;
 	private readonly permissionPrompt: PermissionPrompt;
+	private readonly permissionPolicyResolver: PermissionPolicyResolver;
 	private readonly rpcRegistry: RpcRegistry;
 	private readonly workerFactory: WorkerFactory;
 	private readonly activeExecutions = new Set<ActiveExecution>();
@@ -58,6 +75,7 @@ export class SafeJsExecutionService {
 		this.now = (): number => dependencies.now?.() ?? Date.now();
 		this.permissionPrompt = dependencies.permissionPrompt;
 		this.rpcRegistry = dependencies.rpcRegistry;
+		this.permissionPolicyResolver = new PermissionPolicyResolver(this.rpcRegistry);
 		this.clearExecutionTimeout = (timeoutId: number): void => {
 			if (dependencies.clearExecutionTimeout !== undefined) {
 				dependencies.clearExecutionTimeout(timeoutId);
@@ -77,6 +95,23 @@ export class SafeJsExecutionService {
 	}
 
 	async execute(code: string, options: SafeJsExecutionOptions = {}): Promise<SafeJsExecutionResult> {
+		return await this.executeInternal(code, options, 'script', {}, () => this.permissionPolicyResolver.resolveScript(code, options.permissionPolicy));
+	}
+
+	async executeExpression(expression: string, options: SafeJsExpressionOptions = {}): Promise<SafeJsExecutionResult> {
+		return await this.executeInternal(expression, options, 'expression', options.inputs ?? {}, () => {
+			validateExpressionInputs(options.inputs ?? {}, this.rpcRegistry.getSandboxGlobalNames());
+			return this.permissionPolicyResolver.resolveExpression(expression, options.permissions);
+		});
+	}
+
+	private async executeInternal(
+		code: string,
+		options: SafeJsExecutionOptions | SafeJsExpressionOptions,
+		mode: 'script' | 'expression',
+		inputs: Record<string, JsonValue>,
+		resolvePermissions: () => PermissionId[],
+	): Promise<SafeJsExecutionResult> {
 		const startedAt = this.now();
 		const codeHash = await this.hashSource(code);
 		const approvalSubject: PermissionApprovalSubject = {
@@ -86,13 +121,11 @@ export class SafeJsExecutionService {
 		let permissions: PermissionId[] = [];
 
 		try {
-			const parsedPermissions = parseLeadingPermissions(code);
-			const knownPermissions = this.rpcRegistry.getKnownPermissions();
-			assertKnownPermissions(parsedPermissions.permissions, knownPermissions);
-			permissions = expandPermissionGroups(parsedPermissions.permissions, knownPermissions);
+			// Capability selection is resolved before approval. A caller-set permission is still subject to the normal user approval flow below.
+			permissions = resolvePermissions();
 		} catch (error) {
 			return {
-				status: 'parse-error',
+				status: error instanceof PermissionPolicyError ? 'policy-error' : 'parse-error',
 				codeHash,
 				message: error instanceof Error ? error.message : 'Unable to parse permissions.',
 				permissions,
@@ -100,31 +133,26 @@ export class SafeJsExecutionService {
 			};
 		}
 
-		const approval = this.approvalStore.load(approvalSubject);
-		const approvedPermissions = new Set(approval?.permissions ?? []);
-		const missingPermissions = permissions.filter(permission => !approvedPermissions.has(permission));
-		const autoApprovedPermissions = this.getAutoAllowLowRiskPermissions()
-			? missingPermissions.filter(permission => this.isLowRiskPermission(permission))
-			: [];
-		const promptedPermissions = missingPermissions.filter(permission => !autoApprovedPermissions.includes(permission));
+		const approvalPlan = this.createPermissionApprovalPlan(approvalSubject, permissions);
 
-		if (options.approvalMode === 'skip-missing' && promptedPermissions.length > 0) {
+		if (options.approvalMode === 'skip-missing' && approvalPlan.promptedPermissions.length > 0) {
 			return {
 				status: 'permission-denied',
 				codeHash,
-				message: `Execution skipped because permission approval is required for ${promptedPermissions.join(', ')}.`,
+				message: `Execution skipped because permission approval is required for ${approvalPlan.promptedPermissions.join(', ')}.`,
 				permissions,
 				elapsedMs: this.now() - startedAt,
 			};
 		}
 
-		if (promptedPermissions.length > 0) {
+		if (approvalPlan.promptedPermissions.length > 0) {
 			const approved = await this.permissionPrompt.requestApproval({
 				allPermissions: permissions,
 				codeHash,
 				callerPluginId: options.source?.callerPluginId,
 				callerPluginName: options.source?.callerPluginName,
-				permissions: promptedPermissions,
+				permissions: approvalPlan.promptedPermissions,
+				compoundRules: approvalPlan.compoundRules,
 				source: options.source,
 				signal: options.signal,
 			});
@@ -137,7 +165,7 @@ export class SafeJsExecutionService {
 				return {
 					status: 'permission-denied',
 					codeHash,
-					message: `Execution cancelled because permission approval was denied for ${promptedPermissions.join(', ')}.`,
+					message: `Execution cancelled because permission approval was denied for ${approvalPlan.promptedPermissions.join(', ')}.`,
 					permissions,
 					elapsedMs: this.now() - startedAt,
 				};
@@ -148,12 +176,12 @@ export class SafeJsExecutionService {
 			return this.createCancelledResult(codeHash, permissions, this.now());
 		}
 
-		const newlyApprovedPermissions = [...autoApprovedPermissions, ...promptedPermissions];
+		const newlyApprovedPermissions = [...approvalPlan.autoApprovedPermissions, ...approvalPlan.promptedPermissions];
 		if (newlyApprovedPermissions.length > 0) {
 			this.approvalStore.save({
 				codeHash,
 				callerPluginId: approvalSubject.callerPluginId,
-				permissions: [...new Set([...approvedPermissions, ...newlyApprovedPermissions])],
+				permissions: [...new Set([...approvalPlan.approvedPermissions, ...newlyApprovedPermissions])],
 				updatedAt: this.now(),
 			});
 		}
@@ -169,6 +197,8 @@ export class SafeJsExecutionService {
 		}).execute({
 			code,
 			codeHash,
+			mode,
+			inputs,
 			grantedPermissions: new Set(permissions),
 			startedAt: this.now(),
 			executionOptions: options,
@@ -183,8 +213,27 @@ export class SafeJsExecutionService {
 		this.activeExecutions.clear();
 	}
 
-	private isLowRiskPermission(permission: PermissionId): boolean {
-		return this.rpcRegistry.getPermissionDefinition(permission)?.severity === 'low';
+	getExpressionBlockPermissions(): PermissionId[] {
+		// Expression blocks have no trusted caller, so never inherit permissions registered later by third-party plugins.
+		return this.getAutoAllowLowRiskPermissions() ? this.rpcRegistry.getBuiltInLowRiskPermissions() : [];
+	}
+
+	private createPermissionApprovalPlan(subject: PermissionApprovalSubject, permissions: PermissionId[]): PermissionApprovalPlan {
+		const approval = this.approvalStore.load(subject);
+		const approvedPermissions = new Set(approval?.permissions ?? []);
+		const missingPermissions = permissions.filter(permission => !approvedPermissions.has(permission));
+		const compoundRules = this.permissionPolicyResolver.getMatchedCompoundRules(new Set(permissions));
+		const autoApprovedPermissions = this.getAutoAllowLowRiskPermissions()
+			? this.permissionPolicyResolver.getAutoAllowablePermissions(missingPermissions, compoundRules)
+			: [];
+		const autoApprovedPermissionSet = new Set(autoApprovedPermissions);
+
+		return {
+			approvedPermissions,
+			autoApprovedPermissions,
+			compoundRules,
+			promptedPermissions: missingPermissions.filter(permission => !autoApprovedPermissionSet.has(permission)),
+		};
 	}
 
 	private createCancelledResult(codeHash: string, permissions: PermissionId[], startedAt: number): SafeJsExecutionResult {

@@ -24,7 +24,12 @@ if (plugin !== undefined) {
 if (api !== undefined) {
 	const callerApi: SafeJsCallerApi = api;
 	const result: Promise<SafeJsExecutionResult> = callerApi.execute('// @permission ui:notify\nawait api.ui.notify("Hello");');
+	const expressionResult: Promise<SafeJsExecutionResult> = callerApi.executeExpression('price * quantity', {
+		inputs: { price: 4, quantity: 3 },
+		permissions: [],
+	});
 	void result;
+	void expressionResult;
 }
 
 const permission: PermissionDefinition = {

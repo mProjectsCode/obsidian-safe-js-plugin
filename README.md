@@ -11,6 +11,7 @@ This plugin is currently highly experimental. There are no stability guarantees 
 ## Features
 
 - Run `safe-js` code blocks from notes.
+- Evaluate concise `safe-js-expression` blocks with worker-local utility functions.
 - Run explicitly configured vault `.js` files from commands.
 - Run selected vault scripts after the workspace layout is ready.
 - Enable optional `safe-js-debug` blocks for diagnostics.
@@ -33,6 +34,16 @@ await api.ui.notify("Hello from Safe JS");
 ````
 
 Use `safe-js-debug` when debug blocks are enabled in settings.
+
+Use `safe-js-expression` for a single JavaScript expression:
+
+````
+```safe-js-expression
+Temporal.PlainDate.from("2026-01-01").add(duration("2w")).toLocaleString(undefined, { dateStyle: "long" })
+```
+````
+
+Expression blocks cannot declare permissions. Worker utilities are always available. If **Auto-allow low-risk permissions** is enabled, expression blocks also receive Safe JS's built-in low-risk permissions.
 
 Code blocks render plain strings as text. They can also return a typed output object:
 
@@ -64,6 +75,8 @@ Scripts request permissions with leading comments:
 
 Permission comments must appear before executable code. Use `namespace:*` to request every permission in a group, such as `// @permission vault:*`. Safe JS stores approvals per source hash and caller plugin, so changing the script or running it from a different plugin asks for approval again.
 
+Plugin integrations can override source declarations with a caller-set permission list, or restrict source requests by exact ID, namespace wildcard, and maximum severity. Policy violations stop before prompting or worker creation. Registered compound rules can raise the effective severity of risky permission combinations.
+
 The approval modal describes the requested permissions and highlights network exfiltration risk when `network:request` is combined with vault, metadata, workspace, or editor read access.
 
 The setting **Auto-allow low-risk permissions** can skip prompts for low-risk permissions. Safe JS still remembers the approval by script hash on the current device.
@@ -76,6 +89,8 @@ In Obsidian, run **Open API docs** to view the available permissions and `api.*`
 
 Current API groups include vault, metadata, workspace, editor, file manager, UI, output, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method or host-side permission.
 
+The complete hardened `Temporal` API and permissionless utilities run entirely inside the worker. Normal scripts use `utils.today`, `utils.yesterday`, `utils.tomorrow`, `utils.now`, `utils.duration`, `utils.link`, `utils.file`, `utils.tag`, and `utils.formatBytes`; expression mode exposes the same functions directly. The date helpers return standard Temporal objects, and `duration` accepts ISO syntax, milliseconds, component objects, or shorthand such as `2w` and `1mo 3d`.
+
 ## Plugin Integration
 
 Other plugins can access Safe JS through the loaded `safe-js` plugin instance:
@@ -85,6 +100,11 @@ const safeJs = this.app.plugins.getPlugin('safe-js');
 const safeJsApi = safeJs?.api.forPlugin(this);
 const result = await safeJsApi?.execute(`// @permission ui:notify
 await api.ui.notice("Hello from another plugin");`);
+
+const total = await safeJsApi?.executeExpression('price * quantity', {
+	inputs: { price: 12, quantity: 3 },
+	permissions: [],
+});
 ```
 
 For TypeScript integrations, install the API helper package:
@@ -93,11 +113,7 @@ For TypeScript integrations, install the API helper package:
 bun add -d @lemons_dev/obsidian-safe-js-api
 ```
 
-It can also be installed from the dedicated package repository:
-
-```sh
-bun add -d github:mProjectsCode/obsidian-safe-js-api#v0.1.3
-```
+Release tarballs are also attached to each Safe JS GitHub release as `obsidian-safe-js-api.tgz`.
 
 Use the helper to avoid writing the plugin lookup cast yourself:
 
@@ -134,13 +150,13 @@ Parts of this plugin were vibe coded with AI assistance. Security-sensitive code
 
 ## Development
 
-This repo uses `packages/safe-js-api` as a Git submodule for the installable API helper package. After cloning, initialize dependencies with:
+This repo includes the installable API helper package in `packages/safe-js-api`. After cloning, initialize dependencies with:
 
 ```sh
 bun run deps:init
 ```
 
-When the public API changes, edit the submodule package source directly, run `bun run api:build`, commit and tag the API package repo, then commit the updated submodule pointer in this repo.
+When the public API changes, edit the package source directly and run `bun run api:build`. Each Safe JS release includes the built API package as `obsidian-safe-js-api.tgz`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 

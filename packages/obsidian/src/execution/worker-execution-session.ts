@@ -1,4 +1,4 @@
-import type { PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
+import type { JsonValue, PermissionId, SafeJsExecutionOptions, SafeJsExecutionResult } from '@lemons_dev/obsidian-safe-js-api';
 import type { HostRpcRequestMessage, HostRpcResponseMessage } from '@lemons_dev/obsidian-safe-js-api/internal';
 import { workerToHostMessageSchema } from 'packages/obsidian/src/execution/contracts';
 import type { WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
@@ -21,6 +21,8 @@ export interface WorkerExecutionSessionDependencies {
 export interface WorkerExecutionSessionOptions {
 	code: string;
 	codeHash: string;
+	mode?: 'script' | 'expression';
+	inputs?: Record<string, JsonValue>;
 	grantedPermissions: ReadonlySet<PermissionId>;
 	startedAt: number;
 	executionOptions: SafeJsExecutionOptions;
@@ -127,6 +129,8 @@ export class WorkerExecutionSession {
 				type: 'execute',
 				executionId,
 				code: options.code,
+				mode: options.mode ?? 'script',
+				inputs: options.inputs ?? {},
 				rpcBindings: this.rpcRegistry.getWorkerBindings(),
 				sandboxGlobals: this.rpcRegistry.getSandboxGlobals(options.grantedPermissions),
 			});

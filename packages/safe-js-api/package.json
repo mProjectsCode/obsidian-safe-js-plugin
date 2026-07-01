@@ -1,0 +1,47 @@
+{
+	"name": "@lemons_dev/obsidian-safe-js-api",
+	"version": "0.1.3",
+	"description": "Types and helper functions for integrating with the Safe JS Obsidian plugin API.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./internal": {
+			"types": "./dist/internal.d.ts",
+			"import": "./dist/internal.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE.md"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"pack:dry-run": "npm pack --dry-run"
+	},
+	"keywords": [
+		"obsidian",
+		"safe-js",
+		"typescript"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mProjectsCode/obsidian-safe-js-plugin.git",
+		"directory": "packages/safe-js-api"
+	},
+	"author": "Moritz Jung",
+	"license": "GPL-3.0",
+	"peerDependencies": {
+		"obsidian": ">=1.12.3"
+	},
+	"devDependencies": {
+		"obsidian": "latest",
+		"typescript": "^6.0.3"
+	}
+}

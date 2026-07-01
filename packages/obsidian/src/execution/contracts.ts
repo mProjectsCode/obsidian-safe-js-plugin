@@ -48,6 +48,8 @@ export const executeWorkerMessageSchema: z.ZodType<ExecuteWorkerMessage> = z.obj
 	type: z.literal('execute'),
 	executionId: z.string().min(1),
 	code: z.string(),
+	mode: z.enum(['script', 'expression']),
+	inputs: z.record(z.string(), jsonValueSchema),
 	rpcBindings: z.array(workerRpcBindingSchema),
 	sandboxGlobals: z.array(workerSandboxGlobalSchema).default([]),
 });

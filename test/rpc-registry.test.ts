@@ -240,6 +240,22 @@ test('rejects duplicate sandbox API paths and reserved globals', () => {
 			value: {},
 		});
 	}).toThrow("Sandbox global 'api' is reserved");
+
+	expect(() => {
+		registry.registerSandboxGlobal({
+			name: 'class',
+			description: 'Invalid identifier.',
+			value: {},
+		});
+	}).toThrow("Invalid sandbox global name 'class'");
+
+	expect(() =>
+		registry.registerSandboxGlobal({
+			name: 'duration',
+			description: 'Overrides the expression utility alias.',
+			value: 'override',
+		}),
+	).not.toThrow();
 });
 
 test('rejects sandbox globals with non-json values', () => {
@@ -281,6 +297,75 @@ test('keeps owned permissions while sandbox globals still reference them', () =>
 	expect(registry.getPermissionDefinition('plugin:shared')?.name).toBe('Shared plugin data');
 	expect(registry.getKnownPermissions()).toContain('plugin:shared');
 	expect(registry.getSandboxGlobals(new Set(['plugin:shared']))).toEqual([{ name: 'sharedPluginData', value: { enabled: true } }]);
+});
+
+test('keeps permissions registered while compound rules reference them', () => {
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
+	const permissionRegistration = registry.registerPermission({
+		id: 'plugin:shared',
+		name: 'Shared plugin data',
+		description: 'Read shared plugin data.',
+		severity: 'low',
+		grantGuidance: 'Grant for shared plugin tests.',
+		standalone: true,
+	});
+	registry.registerPermission({
+		id: 'other:read',
+		name: 'Other data',
+		description: 'Read other data.',
+		severity: 'low',
+		grantGuidance: 'Grant for shared plugin tests.',
+		standalone: true,
+	});
+	const ruleRegistration = registry.registerCompoundPermissionRule({
+		id: 'shared-with-other',
+		permissions: ['plugin:shared', 'other:read'],
+		severity: 'high',
+		description: 'Combined access.',
+	});
+
+	expect(() => permissionRegistration.unregister()).toThrow("compound permission rule 'shared-with-other' uses it");
+	expect(registry.getPermissionDefinition('plugin:shared')).toBeDefined();
+
+	ruleRegistration.unregister();
+	permissionRegistration.unregister();
+	permissionRegistration.unregister();
+	expect(registry.getPermissionDefinition('plugin:shared')).toBeUndefined();
+});
+
+test('validates compound rule severity, description, and distinct patterns', () => {
+	const registry = new RpcRegistry({
+		permissionDefinitions: [
+			{ id: 'test:call', name: 'Call', description: 'Call.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+			{ id: 'other:read', name: 'Read', description: 'Read.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+		],
+		validators: testValidatorOptions,
+	});
+
+	expect(() =>
+		registry.registerCompoundPermissionRule({
+			id: 'duplicates',
+			permissions: ['test:call', 'test:call'],
+			severity: 'high',
+			description: 'Duplicate.',
+		}),
+	).toThrow('must not contain duplicate permission patterns');
+	expect(() =>
+		registry.registerCompoundPermissionRule({
+			id: 'missing-description',
+			permissions: ['test:call', 'other:read'],
+			severity: 'high',
+			description: ' ',
+		}),
+	).toThrow('must have a description');
+	expect(() =>
+		registry.registerCompoundPermissionRule({
+			id: 'bad-severity',
+			permissions: ['test:call', 'other:read'],
+			severity: 'unexpected' as never,
+			description: 'Invalid severity.',
+		}),
+	).toThrow("Invalid severity 'unexpected'");
 });
 
 test('dispatches methods that reference built-in validators by id', async () => {

@@ -26,7 +26,8 @@ export function isJsonValue(value: unknown): value is JsonValue {
 	}
 
 	if (typeof value === 'object') {
-		return Object.values(value).every(isJsonValue);
+		const prototype = Reflect.getPrototypeOf(value);
+		return (prototype === Object.prototype || prototype === null) && Object.values(value).every(isJsonValue);
 	}
 
 	return false;

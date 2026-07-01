@@ -1,4 +1,5 @@
 import type {
+	CompoundPermissionRuleDefinition,
 	JsonValue,
 	PermissionDefinition,
 	PermissionId,
@@ -83,7 +84,17 @@ export interface RpcDocsGlobal {
 export interface RpcRegistryOptions {
 	methods?: readonly RpcMethodDefinition[];
 	permissionDefinitions?: readonly PermissionDefinition[];
+	compoundPermissionRules?: readonly CompoundPermissionRuleDefinition[];
 	validators: BuiltInValidatorOptions | readonly SafeJsValidator[];
 }
 
-export type { JsonValue, PermissionDefinition, PermissionId, SafeJsValidationContext, SafeJsValidationResult, SafeJsValidator, SafeJsValidatorReference };
+export type {
+	CompoundPermissionRuleDefinition,
+	JsonValue,
+	PermissionDefinition,
+	PermissionId,
+	SafeJsValidationContext,
+	SafeJsValidationResult,
+	SafeJsValidator,
+	SafeJsValidatorReference,
+};

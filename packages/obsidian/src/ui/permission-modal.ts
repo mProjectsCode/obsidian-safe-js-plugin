@@ -2,7 +2,6 @@ import type { PermissionId } from '@lemons_dev/obsidian-safe-js-api';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
-import { RICH_OUTPUT_PERMISSION } from 'packages/obsidian/src/permissions/permissions';
 import type { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export class ObsidianPermissionPrompt implements PermissionPrompt {
@@ -66,15 +65,8 @@ class PermissionApprovalModal extends Modal {
 			});
 		}
 
-		if (this.hasNetworkExfiltrationRisk()) {
-			contentEl.createEl('p', {
-				text: 'Network access is requested together with read access. This script could send vault or editor data to external services.',
-			});
-		}
-		if (this.hasRichOutputExfiltrationRisk()) {
-			contentEl.createEl('p', {
-				text: 'Rich output is requested together with read access. Rendered Markdown or HTML can load remote resources, including addresses that contain vault or editor data.',
-			});
+		for (const description of new Set(this.request.compoundRules.map(rule => rule.description))) {
+			contentEl.createEl('p', { text: description });
 		}
 		if (this.hasVaultWriteRenderRisk()) {
 			contentEl.createEl('p', {
@@ -143,18 +135,6 @@ class PermissionApprovalModal extends Modal {
 				methodList.createEl('li', { text: rpcMethod.usage });
 			}
 		}
-	}
-
-	private hasNetworkExfiltrationRisk(): boolean {
-		const permissions = this.getAllPermissions();
-		const readPermissions: PermissionId[] = ['vault:read', 'metadata:read', 'workspace:read', 'editor:read'];
-		return permissions.has('network:request') && readPermissions.some(permission => permissions.has(permission));
-	}
-
-	private hasRichOutputExfiltrationRisk(): boolean {
-		const permissions = this.getAllPermissions();
-		const readPermissions: PermissionId[] = ['vault:read', 'metadata:read', 'workspace:read', 'editor:read'];
-		return permissions.has(RICH_OUTPUT_PERMISSION) && readPermissions.some(permission => permissions.has(permission));
 	}
 
 	private hasVaultWriteRenderRisk(): boolean {

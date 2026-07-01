@@ -102,7 +102,7 @@ function createRegistry(): RpcRegistry {
 }
 
 test('sandbox global documentation only advertises the intentional host surface', () => {
-	expect(SANDBOX_GLOBALS.map(global => global.name).sort()).toEqual(['api', 'console']);
+	expect(SANDBOX_GLOBALS.map(global => global.name).sort()).toEqual(['Temporal', 'api', 'console', 'utils']);
 });
 
 test('SES compartment does not inherit browser, Bun, Node, or worker host globals', () => {
@@ -196,6 +196,8 @@ test('worker execute messages only include RPC binding metadata, not host app ob
 		type: 'execute',
 		executionId: 'exec-1',
 		code: 'return 1;',
+		mode: 'script',
+		inputs: {},
 		rpcBindings: [
 			{
 				method: 'vault:read',

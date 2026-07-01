@@ -6,6 +6,8 @@ import type { ExecuteWorkerMessage, HostRpcResponseMessage, JsonValue, WorkerRpc
 import { executeWorkerMessageSchema, hostRpcResponseMessageSchema } from 'packages/obsidian/src/execution/contracts';
 import { isJsonValue, toJsonValue } from 'packages/obsidian/src/execution/json';
 import { SANDBOX_GLOBALS } from 'packages/obsidian/src/execution/sandbox-globals';
+import { isReservedSandboxGlobalName, isUsableExpressionInputName } from 'packages/obsidian/src/execution/utility-names';
+import { createWorkerUtilities } from 'packages/obsidian/src/worker/worker-utilities';
 
 interface PendingRpc {
 	resolve(value: JsonValue): void;
@@ -22,6 +24,7 @@ const safeConsole = sesHarden({
 	log: console.log.bind(console),
 	warn: console.warn.bind(console),
 });
+const workerUtilities = createWorkerUtilities(sesHarden);
 
 function nextRpcRequestId(): string {
 	return crypto.randomUUID();
@@ -102,29 +105,12 @@ function createApi(executionId: string, bindings: readonly WorkerRpcBinding[]): 
 }
 
 async function executeUserCode(message: ExecuteWorkerMessage): Promise<void> {
-	const api = createApi(message.executionId, message.rpcBindings);
-	const sandboxGlobals: Record<string, unknown> = {
-		api,
-		console: safeConsole,
-	};
-
-	for (const global of message.sandboxGlobals) {
-		if (global.name === 'api' || global.name === 'console') {
-			throw new Error(`Sandbox global '${global.name}' is reserved.`);
-		}
-
-		sandboxGlobals[global.name] = sesHarden(global.value);
-	}
-
 	try {
 		const compartment = new SesCompartment({
-			globals: sesHarden(sandboxGlobals),
+			globals: sesHarden(createSandboxGlobals(message)),
 			__options__: true,
 		});
-		const rawValue = (await compartment.evaluate(`"use strict";
-(async () => {
-${message.code}
-})();`)) as unknown;
+		const rawValue = (await compartment.evaluate(createUserSource(message))) as unknown;
 		postMessageToHost({
 			type: 'execution-result',
 			executionId: message.executionId,
@@ -139,6 +125,42 @@ ${message.code}
 			error: serializeError(error),
 		});
 	}
+}
+
+function createSandboxGlobals(message: ExecuteWorkerMessage): Record<string, unknown> {
+	const sandboxGlobals = Object.assign(Object.create(null) as Record<string, unknown>, {
+		Temporal: workerUtilities.temporal,
+		api: createApi(message.executionId, message.rpcBindings),
+		console: safeConsole,
+	});
+
+	if (message.mode === 'script') {
+		sandboxGlobals.utils = workerUtilities.utils;
+	} else {
+		const customGlobalNames = new Set(message.sandboxGlobals.map(global => global.name));
+		for (const inputName of Object.keys(message.inputs)) {
+			// Host validation should catch collisions first; repeat it here to keep the worker boundary self-defending.
+			if (!isUsableExpressionInputName(inputName) || customGlobalNames.has(inputName)) {
+				throw new Error(`Expression input '${inputName}' conflicts with a sandbox global.`);
+			}
+		}
+		Object.assign(sandboxGlobals, workerUtilities.expressionGlobals, message.inputs);
+	}
+
+	for (const global of message.sandboxGlobals) {
+		if (isReservedSandboxGlobalName(global.name)) {
+			throw new Error(`Sandbox global '${global.name}' is reserved.`);
+		}
+
+		sandboxGlobals[global.name] = sesHarden(global.value);
+	}
+
+	return sandboxGlobals;
+}
+
+function createUserSource(message: ExecuteWorkerMessage): string {
+	// Newlines around user code keep leading/trailing line comments from swallowing the generated wrapper.
+	return message.mode === 'expression' ? `"use strict";\n(async () => (\n${message.code}\n))();` : `"use strict";\n(async () => {\n${message.code}\n})();`;
 }
 
 function readPathArgument(value: unknown): string {

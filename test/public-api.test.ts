@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Plugin } from 'obsidian';
-import type { SafeJsExecutionOptions, SafeJsExecutionResult, SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
+import type { SafeJsExecutionOptions, SafeJsExecutionResult, SafeJsExpressionOptions, SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
 import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import { DefaultSafeJsPublicApi } from 'packages/obsidian/src/public-api/safe-js-public-api';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
@@ -49,6 +49,7 @@ function echoResponseValidator(value: unknown): SafeJsValidationResult<EchoRespo
 
 class FakeExecutionService {
 	requests: { code: string; options: SafeJsExecutionOptions }[] = [];
+	expressionRequests: { expression: string; options: SafeJsExpressionOptions }[] = [];
 
 	async execute(code: string, options: SafeJsExecutionOptions = {}): Promise<SafeJsExecutionResult> {
 		this.requests.push({ code, options });
@@ -57,6 +58,17 @@ class FakeExecutionService {
 			codeHash: 'hash-a',
 			value: null,
 			permissions: [],
+			elapsedMs: 1,
+		};
+	}
+
+	async executeExpression(expression: string, options: SafeJsExpressionOptions = {}): Promise<SafeJsExecutionResult> {
+		this.expressionRequests.push({ expression, options });
+		return {
+			status: 'success',
+			codeHash: 'hash-expression',
+			value: null,
+			permissions: options.permissions ?? [],
 			elapsedMs: 1,
 		};
 	}
@@ -104,6 +116,26 @@ test('public caller API stamps execution source with caller plugin metadata', as
 	});
 });
 
+test('public caller API exposes expression execution with caller metadata and direct inputs', async () => {
+	const executionService = new FakeExecutionService();
+	const registry = new RpcRegistry({ validators: testValidatorOptions });
+	const { plugin } = createPlugin();
+	const callerApi = new DefaultSafeJsPublicApi({
+		executionService: executionService as unknown as SafeJsExecutionService,
+		rpcRegistry: registry,
+	}).forPlugin(plugin);
+
+	await callerApi.executeExpression('price * quantity', { inputs: { price: 4, quantity: 3 } });
+
+	expect(executionService.expressionRequests[0]).toMatchObject({
+		expression: 'price * quantity',
+		options: {
+			inputs: { price: 4, quantity: 3 },
+			source: { callerPluginId: 'caller-plugin', callerPluginName: 'Caller plugin' },
+		},
+	});
+});
+
 test('public caller API registers owned sandbox functions and cleans them up on unload', async () => {
 	const executionService = new FakeExecutionService();
 	const registry = new RpcRegistry({ validators: testValidatorOptions });
@@ -119,6 +151,20 @@ test('public caller API registers owned sandbox functions and cleans them up on 
 		description: 'Echo caller information.',
 		severity: 'low',
 		grantGuidance: 'Grant for caller tests.',
+	});
+	callerApi.registerPermission({
+		id: 'caller:read',
+		name: 'Caller read',
+		description: 'Read caller information.',
+		severity: 'low',
+		grantGuidance: 'Grant for caller tests.',
+		standalone: true,
+	});
+	callerApi.registerCompoundPermissionRule({
+		id: 'caller-echo-read',
+		permissions: ['caller:echo', 'caller:read'],
+		severity: 'high',
+		description: 'Combined caller access.',
 	});
 	callerApi.registerSandboxFunction({
 		method: 'caller:echo',
@@ -150,6 +196,7 @@ test('public caller API registers owned sandbox functions and cleans them up on 
 
 	expect(registry.getWorkerBindings()).toEqual([]);
 	expect(registry.getKnownPermissions()).not.toContain('caller:echo');
+	expect(registry.getCompoundPermissionRules().some(rule => rule.id === 'caller-echo-read')).toBe(false);
 });
 
 test('public caller API rejects sandbox functions with unknown permissions', () => {

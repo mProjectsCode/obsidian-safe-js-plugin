@@ -1,3 +1,0 @@
-[submodule "packages/safe-js-api"]
-	path = packages/safe-js-api
-	url = https://github.com/mProjectsCode/obsidian-safe-js-api

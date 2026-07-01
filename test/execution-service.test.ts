@@ -37,8 +37,10 @@ class FakeWorker implements WorkerClient {
 	private messageListener: ((message: WorkerClientMessage) => void) | null = null;
 	private errorListener: ((error: Error) => void) | null = null;
 	terminated = false;
+	postedMessages: HostWorkerMessage[] = [];
 
 	postMessage(message: HostWorkerMessage): void {
+		this.postedMessages.push(message);
 		if (message.type === 'execute') {
 			queueMicrotask(() => {
 				this.messageListener?.({
@@ -147,16 +149,23 @@ function createRegistry(): RpcRegistry {
 	});
 }
 
-function createService(options: { promptApproved: boolean; store?: MemoryPermissionApprovalStore; workerFactory?: FakeWorkerFactory }) {
+function createService(options: {
+	promptApproved: boolean;
+	store?: MemoryPermissionApprovalStore;
+	workerFactory?: FakeWorkerFactory;
+	registry?: RpcRegistry;
+	autoAllowLowRiskPermissions?: boolean;
+}) {
 	const prompt = new FakePrompt(options.promptApproved);
 	const workerFactory = options.workerFactory ?? new FakeWorkerFactory();
 	const store = options.store ?? new MemoryPermissionApprovalStore();
 	const service = new SafeJsExecutionService({
-		rpcRegistry: createRegistry(),
+		rpcRegistry: options.registry ?? createRegistry(),
 		approvalStore: store,
 		permissionPrompt: prompt,
 		workerFactory,
 		getDefaultTimeoutMs: () => 1000,
+		getAutoAllowLowRiskPermissions: () => options.autoAllowLowRiskPermissions ?? false,
 		hashSource: async code => `hash:${code.length}`,
 		createExecutionId: () => 'exec-1',
 		now: () => 100,
@@ -341,6 +350,29 @@ return await api.test.echo({ value: "x" });`;
 	expect(store.load({ codeHash: `hash:${code.length}` })?.permissions).toEqual(['test:call']);
 });
 
+test('compound severity prevents auto-allowing individually low-risk permissions', async () => {
+	const registry = new RpcRegistry({
+		permissionDefinitions: [
+			{ id: 'test:call', name: 'Call', description: 'Call.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+			{ id: 'other:read', name: 'Read', description: 'Read.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+		],
+		compoundPermissionRules: [{ id: 'call-with-read', permissions: ['test:call', 'other:read'], severity: 'high', description: 'Combined risk.' }],
+		validators: testValidatorOptions,
+	});
+	const { service, prompt, workerFactory } = createService({
+		promptApproved: false,
+		registry,
+		autoAllowLowRiskPermissions: true,
+	});
+
+	const result = await service.execute('// @permission test:call\n// @permission other:read\nreturn 1;');
+
+	expect(result.status).toBe('permission-denied');
+	expect(prompt.requests[0]?.permissions).toEqual(['test:call', 'other:read']);
+	expect(prompt.requests[0]?.compoundRules.map(rule => rule.id)).toEqual(['call-with-read']);
+	expect(workerFactory.workers).toHaveLength(0);
+});
+
 test('returns parse errors before creating a worker', async () => {
 	const { service, workerFactory } = createService({ promptApproved: true });
 
@@ -349,6 +381,111 @@ return 1;`);
 
 	expect(result.status).toBe('parse-error');
 	expect(workerFactory.workers).toHaveLength(0);
+});
+
+test('set permission policies reject source permission comments before prompting', async () => {
+	const { service, prompt, workerFactory } = createService({ promptApproved: true });
+	const result = await service.execute('// @permission test:call\nreturn 1;', {
+		permissionPolicy: { mode: 'set', permissions: ['test:call'] },
+	});
+
+	expect(result).toMatchObject({ status: 'policy-error', permissions: [] });
+	expect(prompt.requests).toHaveLength(0);
+	expect(workerFactory.workers).toHaveLength(0);
+});
+
+test('set permission policies supply the complete approved permission set', async () => {
+	const { service, prompt } = createService({ promptApproved: true });
+	const result = await service.execute('return await api.test.echo({ value: "x" });', {
+		permissionPolicy: { mode: 'set', permissions: ['test:*'] },
+	});
+
+	expect(result.status).toBe('success');
+	expect(prompt.requests[0]?.permissions).toEqual(['test:call']);
+});
+
+test('restrict policies enforce permission names and compound severity', async () => {
+	const registry = new RpcRegistry({
+		methods: [
+			{
+				method: 'test:echo',
+				permission: 'test:call',
+				description: 'Echo.',
+				usage: 'api.test.echo({ value })',
+				requestValidator: echoValueValidator,
+				responseValidator: echoValueValidator,
+				binding: { namespace: 'test', functionName: 'echo', paramStyle: 'object' },
+				handler: params => params,
+			},
+		],
+		permissionDefinitions: [
+			{ id: 'test:call', name: 'Call', description: 'Call.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+			{ id: 'other:read', name: 'Read', description: 'Read.', severity: 'low', grantGuidance: 'Test.', standalone: true },
+		],
+		compoundPermissionRules: [{ id: 'call-with-read', permissions: ['test:call', 'other:read'], severity: 'high', description: 'Combined risk.' }],
+		validators: testValidatorOptions,
+	});
+	const { service, workerFactory } = createService({ promptApproved: true, registry });
+
+	const disallowed = await service.execute('// @permission other:read\nreturn 1;', {
+		permissionPolicy: { mode: 'restrict', permissions: ['test:*'] },
+	});
+	const compound = await service.execute('// @permission test:call\n// @permission other:read\nreturn 1;', {
+		permissionPolicy: { mode: 'restrict', maxSeverity: 'medium' },
+	});
+
+	expect(disallowed.status).toBe('policy-error');
+	expect(compound).toMatchObject({ status: 'policy-error', message: expect.stringContaining('call-with-read') });
+	expect(workerFactory.workers).toHaveLength(0);
+});
+
+test('expression execution uses set permissions, direct inputs, and expression worker mode', async () => {
+	const { service, workerFactory } = createService({ promptApproved: true });
+	const result = await service.executeExpression('await api.test.echo({ value: inputValue })', {
+		permissions: ['test:call'],
+		inputs: { duration: 'caller override', inputValue: 'hello', übergabe: true },
+	});
+
+	expect(result.status).toBe('success');
+	expect(workerFactory.workers[0]?.postedMessages[0]).toMatchObject({
+		type: 'execute',
+		mode: 'expression',
+		inputs: { duration: 'caller override', inputValue: 'hello', übergabe: true },
+	});
+});
+
+test('expressions reject permission comments and unusable or conflicting input names', async () => {
+	const { service, workerFactory } = createService({ promptApproved: true });
+	const commentResult = await service.executeExpression('// @permission test:call\n1', { permissions: ['test:call'] });
+	const conflictingInputResult = await service.executeExpression('Temporal', { inputs: { Temporal: 'collision' } });
+	const immutableInputResult = await service.executeExpression('undefined', { inputs: { undefined: 1 } });
+	const prototypeInputResult = await service.executeExpression('__proto__', {
+		inputs: JSON.parse('{"__proto__":{"unsafe":true}}') as Record<string, never>,
+	});
+
+	expect(commentResult.status).toBe('policy-error');
+	expect(conflictingInputResult.status).toBe('policy-error');
+	expect(immutableInputResult).toMatchObject({ status: 'policy-error', message: expect.stringContaining("'undefined'") });
+	expect(prototypeInputResult).toMatchObject({ status: 'policy-error', message: expect.stringContaining("'__proto__'") });
+	expect(workerFactory.workers).toHaveLength(0);
+});
+
+test('expression blocks only inherit low-risk permissions from the initial registry', () => {
+	const registry = new RpcRegistry({
+		permissionDefinitions: [{ id: 'built-in:read', name: 'Read', description: 'Read.', severity: 'low', grantGuidance: 'Test.', standalone: true }],
+		validators: testValidatorOptions,
+	});
+	registry.registerPermission({
+		id: 'third-party:read',
+		name: 'Third-party read',
+		description: 'Read third-party data.',
+		severity: 'low',
+		grantGuidance: 'Test.',
+		standalone: true,
+	});
+	const { service } = createService({ promptApproved: true, registry, autoAllowLowRiskPermissions: true });
+
+	expect(service.getExpressionBlockPermissions()).toEqual(['built-in:read']);
 });
 
 test('terminates workers on timeout', async () => {

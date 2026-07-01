@@ -1,7 +1,9 @@
 import type {
+	CompoundPermissionRuleDefinition,
 	PermissionDefinition,
 	SafeJsCallerApi,
 	SafeJsExecutionOptions,
+	SafeJsExpressionOptions,
 	SafeJsExecutionResult,
 	SafeJsPublicApi,
 	SafeJsRegistration,
@@ -19,9 +21,11 @@ import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/exe
 import type { RpcMethodDefinition, RpcRegistrationOwner, RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 
 export type {
+	CompoundPermissionRuleDefinition,
 	PermissionDefinition,
 	SafeJsCallerApi,
 	SafeJsExecutionOptions,
+	SafeJsExpressionOptions,
 	SafeJsExecutionResult,
 	SafeJsPublicApi,
 	SafeJsRegistration,
@@ -91,6 +95,17 @@ class DefaultSafeJsCallerApi implements SafeJsCallerApi {
 		});
 	}
 
+	async executeExpression(expression: string, options: SafeJsExpressionOptions = {}): Promise<SafeJsExecutionResult> {
+		return await this.executionService.executeExpression(expression, {
+			...options,
+			source: {
+				...options.source,
+				callerPluginId: this.owner.pluginId,
+				callerPluginName: this.owner.pluginName,
+			},
+		});
+	}
+
 	validate<T = unknown>(validator: SafeJsValidatorReference<T>, value: unknown, context: SafeJsValidationContext = {}): SafeJsValidationResult<T> {
 		return this.rpcRegistry.validate(validator, value, {
 			...context,
@@ -104,6 +119,10 @@ class DefaultSafeJsCallerApi implements SafeJsCallerApi {
 
 	registerPermission(definition: PermissionDefinition): SafeJsRegistration {
 		return this.rpcRegistry.registerPermission(definition, this.owner);
+	}
+
+	registerCompoundPermissionRule(definition: CompoundPermissionRuleDefinition): SafeJsRegistration {
+		return this.rpcRegistry.registerCompoundPermissionRule(definition, this.owner);
 	}
 
 	registerSandboxFunction<TParams = unknown, TResult = unknown>(definition: SandboxFunctionDefinition<TParams, TResult>): SafeJsRegistration {

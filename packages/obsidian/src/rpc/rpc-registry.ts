@@ -1,4 +1,5 @@
 import type {
+	CompoundPermissionRuleDefinition,
 	PermissionDefinition,
 	PermissionId,
 	SafeJsRegistration,
@@ -9,7 +10,13 @@ import type {
 } from '@lemons_dev/obsidian-safe-js-api';
 import type { WorkerRpcBinding, WorkerSandboxGlobal } from '@lemons_dev/obsidian-safe-js-api/internal';
 import { jsonValueSchema } from 'packages/obsidian/src/execution/contracts';
-import { PERMISSION_DEFINITIONS, getPermissionDefinition } from 'packages/obsidian/src/permissions/permissions';
+import { isReservedSandboxGlobalName, isUsableSandboxGlobalName } from 'packages/obsidian/src/execution/utility-names';
+import {
+	COMPOUND_PERMISSION_RULES,
+	PERMISSION_DEFINITIONS,
+	getPermissionDefinition,
+	matchesPermissionPattern,
+} from 'packages/obsidian/src/permissions/permissions';
 import type {
 	JsonValue,
 	RpcContext,
@@ -22,6 +29,10 @@ import type {
 } from 'packages/obsidian/src/rpc/rpc-registry-types';
 import type { BuiltInValidatorOptions } from 'packages/obsidian/src/rpc/validators';
 import { ValidatorRegistry, createBuiltInValidators } from 'packages/obsidian/src/rpc/validators';
+
+const COMPOUND_RULE_ID_PATTERN = /^[a-z][a-z0-9-]*$/u;
+const MINIMUM_COMPOUND_RULE_PERMISSIONS = 2;
+const PERMISSION_SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
 
 export type { SafeJsRegistration } from '@lemons_dev/obsidian-safe-js-api';
 export type {
@@ -41,6 +52,10 @@ export type {
 export class RpcRegistry {
 	private readonly methods = new Map<string, RpcMethodDefinition<unknown, unknown>>();
 	private readonly permissionDefinitions = new Map<PermissionId, PermissionDefinition>();
+	// Snapshot the initial registry so expression blocks cannot silently gain capabilities from later plugin registrations.
+	private readonly builtInPermissionIds = new Set<PermissionId>();
+	private readonly compoundPermissionRules = new Map<string, CompoundPermissionRuleDefinition>();
+	private readonly compoundPermissionRuleOwners = new Map<string, RpcRegistrationOwner>();
 	private readonly validators: ValidatorRegistry;
 	private readonly methodOwners = new Map<string, RpcRegistrationOwner>();
 	private readonly permissionOwners = new Map<PermissionId, RpcRegistrationOwner>();
@@ -50,12 +65,18 @@ export class RpcRegistry {
 	constructor(options: RpcRegistryOptions) {
 		this.validators = new ValidatorRegistry(isValidatorList(options.validators) ? options.validators : createBuiltInValidators(options.validators));
 
-		for (const permission of options.permissionDefinitions ?? PERMISSION_DEFINITIONS) {
+		const initialPermissions = options.permissionDefinitions ?? PERMISSION_DEFINITIONS;
+		for (const permission of initialPermissions) {
 			this.permissionDefinitions.set(permission.id, permission);
+			this.builtInPermissionIds.add(permission.id);
 		}
 
 		for (const method of options.methods ?? []) {
 			this.addMethod(method);
+		}
+
+		for (const rule of options.compoundPermissionRules ?? (options.permissionDefinitions === undefined ? COMPOUND_PERMISSION_RULES : [])) {
+			this.addCompoundPermissionRule(rule);
 		}
 	}
 
@@ -95,17 +116,21 @@ export class RpcRegistry {
 		this.permissionOwners.set(permission.id, owner);
 
 		return {
-			unregister: (): void => {
-				if ([...this.methods.values()].some(method => method.permission === permission.id)) {
-					throw new Error(`Cannot unregister permission '${permission.id}' while RPC methods still use it.`);
-				}
-				if ([...this.sandboxGlobals.values()].some(global => global.permission === permission.id)) {
-					throw new Error(`Cannot unregister permission '${permission.id}' while sandbox globals still use it.`);
-				}
-
+			unregister: createUnregisterCallback(() => {
+				this.assertPermissionCanBeUnregistered(permission.id);
 				this.permissionDefinitions.delete(permission.id);
 				this.permissionOwners.delete(permission.id);
-			},
+			}),
+		};
+	}
+
+	registerCompoundPermissionRule(rule: CompoundPermissionRuleDefinition, owner: RpcRegistrationOwner = {}): SafeJsRegistration {
+		this.addCompoundPermissionRule(rule, owner);
+		return {
+			unregister: createUnregisterCallback(() => {
+				this.compoundPermissionRules.delete(rule.id);
+				this.compoundPermissionRuleOwners.delete(rule.id);
+			}),
 		};
 	}
 
@@ -113,10 +138,10 @@ export class RpcRegistry {
 		this.addMethod(method, owner);
 
 		return {
-			unregister: (): void => {
+			unregister: createUnregisterCallback(() => {
 				this.methods.delete(method.method);
 				this.methodOwners.delete(method.method);
-			},
+			}),
 		};
 	}
 
@@ -133,11 +158,11 @@ export class RpcRegistry {
 			throw new Error(`Duplicate sandbox global '${global.name}'.`);
 		}
 
-		if (global.name === 'api' || global.name === 'console') {
+		if (isReservedSandboxGlobalName(global.name)) {
 			throw new Error(`Sandbox global '${global.name}' is reserved.`);
 		}
 
-		if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(global.name)) {
+		if (!isUsableSandboxGlobalName(global.name)) {
 			throw new Error(`Invalid sandbox global name '${global.name}'.`);
 		}
 
@@ -154,14 +179,20 @@ export class RpcRegistry {
 		this.sandboxGlobalOwners.set(global.name, owner);
 
 		return {
-			unregister: (): void => {
+			unregister: createUnregisterCallback(() => {
 				this.sandboxGlobals.delete(global.name);
 				this.sandboxGlobalOwners.delete(global.name);
-			},
+			}),
 		};
 	}
 
 	unregisterOwner(pluginId: string): void {
+		for (const [ruleId, owner] of this.compoundPermissionRuleOwners) {
+			if (owner.pluginId === pluginId) {
+				this.compoundPermissionRules.delete(ruleId);
+				this.compoundPermissionRuleOwners.delete(ruleId);
+			}
+		}
 		for (const [methodName, owner] of this.methodOwners) {
 			if (owner.pluginId === pluginId) {
 				this.methods.delete(methodName);
@@ -177,7 +208,12 @@ export class RpcRegistry {
 		}
 
 		for (const [permission, owner] of this.permissionOwners) {
-			if (owner.pluginId === pluginId && !this.hasMethodsForPermission(permission) && !this.hasSandboxGlobalsForPermission(permission)) {
+			if (
+				owner.pluginId === pluginId &&
+				!this.hasMethodsForPermission(permission) &&
+				!this.hasSandboxGlobalsForPermission(permission) &&
+				!this.hasCompoundRulesForPermission(permission)
+			) {
 				this.permissionDefinitions.delete(permission);
 				this.permissionOwners.delete(permission);
 			}
@@ -192,6 +228,16 @@ export class RpcRegistry {
 			...[...this.methods.values()].map(method => method.permission),
 			...[...this.sandboxGlobals.values()].flatMap(global => (global.permission === undefined ? [] : [global.permission])),
 		]);
+	}
+
+	getBuiltInLowRiskPermissions(): PermissionId[] {
+		return [...this.builtInPermissionIds]
+			.filter(permission => this.getKnownPermissions().has(permission) && this.permissionDefinitions.get(permission)?.severity === 'low')
+			.sort();
+	}
+
+	getCompoundPermissionRules(): CompoundPermissionRuleDefinition[] {
+		return [...this.compoundPermissionRules.values()];
 	}
 
 	getWorkerBindings(): WorkerRpcBinding[] {
@@ -212,6 +258,10 @@ export class RpcRegistry {
 				name: global.name,
 				value: global.value,
 			}));
+	}
+
+	getSandboxGlobalNames(): string[] {
+		return [...this.sandboxGlobals.keys()];
 	}
 
 	getDocs(): RpcDocsPermission[] {
@@ -333,8 +383,59 @@ export class RpcRegistry {
 		return [...this.methods.values()].some(method => method.permission === permission);
 	}
 
+	private addCompoundPermissionRule(rule: CompoundPermissionRuleDefinition, owner: RpcRegistrationOwner = {}): void {
+		if (!COMPOUND_RULE_ID_PATTERN.test(rule.id)) {
+			throw new Error(`Invalid compound permission rule id '${rule.id}'.`);
+		}
+		if (this.compoundPermissionRules.has(rule.id)) {
+			throw new Error(`Duplicate compound permission rule '${rule.id}'.`);
+		}
+		if (rule.permissions.length < MINIMUM_COMPOUND_RULE_PERMISSIONS) {
+			throw new Error(`Compound permission rule '${rule.id}' must contain at least two permission patterns.`);
+		}
+		if (new Set(rule.permissions).size !== rule.permissions.length) {
+			throw new Error(`Compound permission rule '${rule.id}' must not contain duplicate permission patterns.`);
+		}
+		if (!PERMISSION_SEVERITIES.has(rule.severity)) {
+			throw new Error(`Invalid severity '${rule.severity}' in compound permission rule '${rule.id}'.`);
+		}
+		if (rule.description.trim() === '') {
+			throw new Error(`Compound permission rule '${rule.id}' must have a description.`);
+		}
+		for (const pattern of rule.permissions) {
+			if (!matchesPermissionPattern(pattern, new Set(this.permissionDefinitions.keys()))) {
+				throw new Error(`Unknown permission pattern '${pattern}' in compound permission rule '${rule.id}'.`);
+			}
+		}
+		this.compoundPermissionRules.set(rule.id, { ...rule, permissions: [...rule.permissions] });
+		this.compoundPermissionRuleOwners.set(rule.id, owner);
+	}
+
 	private hasSandboxGlobalsForPermission(permission: PermissionId): boolean {
 		return [...this.sandboxGlobals.values()].some(global => global.permission === permission);
+	}
+
+	private hasCompoundRulesForPermission(permission: PermissionId): boolean {
+		return this.findCompoundRuleForPermission(permission) !== undefined;
+	}
+
+	private assertPermissionCanBeUnregistered(permission: PermissionId): void {
+		if (this.hasMethodsForPermission(permission)) {
+			throw new Error(`Cannot unregister permission '${permission}' while RPC methods still use it.`);
+		}
+		if (this.hasSandboxGlobalsForPermission(permission)) {
+			throw new Error(`Cannot unregister permission '${permission}' while sandbox globals still use it.`);
+		}
+
+		const dependentRule = this.findCompoundRuleForPermission(permission);
+		if (dependentRule !== undefined) {
+			throw new Error(`Cannot unregister permission '${permission}' while compound permission rule '${dependentRule.id}' uses it.`);
+		}
+	}
+
+	private findCompoundRuleForPermission(permission: PermissionId): CompoundPermissionRuleDefinition | undefined {
+		const selectedPermission = new Set([permission]);
+		return [...this.compoundPermissionRules.values()].find(rule => rule.permissions.some(pattern => matchesPermissionPattern(pattern, selectedPermission)));
 	}
 
 	private assertKnownValidator(reference: SafeJsValidatorReference<unknown>, methodName: string, direction: 'request' | 'response'): void {
@@ -346,4 +447,13 @@ export class RpcRegistry {
 
 function isValidatorList(value: BuiltInValidatorOptions | readonly SafeJsValidator[]): value is readonly SafeJsValidator[] {
 	return Array.isArray(value);
+}
+
+function createUnregisterCallback(unregister: () => void): () => void {
+	let registered = true;
+	return (): void => {
+		if (!registered) return;
+		unregister();
+		registered = false;
+	};
 }

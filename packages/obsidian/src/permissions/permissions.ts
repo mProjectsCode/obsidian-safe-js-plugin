@@ -1,8 +1,14 @@
-import type { PermissionDefinition, PermissionId, PermissionSeverity } from '@lemons_dev/obsidian-safe-js-api';
+import type { CompoundPermissionRuleDefinition, PermissionDefinition, PermissionId, PermissionSeverity } from '@lemons_dev/obsidian-safe-js-api';
 
 export type { PermissionDefinition, PermissionId, PermissionSeverity };
 
 export const RICH_OUTPUT_PERMISSION: PermissionId = 'output:render-rich';
+export const PERMISSION_GROUP_SUFFIX = ':*';
+
+const NETWORK_PERMISSION: PermissionId = 'network:request';
+const PRIVATE_DATA_READ_PERMISSIONS: PermissionId[] = ['vault:read', 'metadata:read', 'workspace:read', 'editor:read'];
+const NETWORK_COMPOUND_RISK_DESCRIPTION = 'Network access combined with read access can send private Obsidian data to an external service.';
+const RICH_OUTPUT_COMPOUND_RISK_DESCRIPTION = 'Rich output combined with read access can load remote resources containing private Obsidian data.';
 
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 	{
@@ -148,6 +154,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 	},
 ];
 
+export const COMPOUND_PERMISSION_RULES: CompoundPermissionRuleDefinition[] = [
+	...createCompoundRiskRules('network', NETWORK_PERMISSION, NETWORK_COMPOUND_RISK_DESCRIPTION),
+	...createCompoundRiskRules('rich-output', RICH_OUTPUT_PERMISSION, RICH_OUTPUT_COMPOUND_RISK_DESCRIPTION),
+];
+
 const permissionDefinitionById = new Map<PermissionId, PermissionDefinition>(PERMISSION_DEFINITIONS.map(definition => [definition.id, definition]));
 
 export interface ParsedPermissions {
@@ -222,7 +233,7 @@ export function expandPermissionGroups(permissions: readonly PermissionId[], kno
 	const expandedPermissions: PermissionId[] = [];
 
 	for (const permission of permissions) {
-		if (!permission.endsWith(':*')) {
+		if (!isPermissionGroup(permission)) {
 			if (!knownPermissions.has(permission)) {
 				throw new PermissionParseError(`Unknown permission '${permission}'.`);
 			}
@@ -231,7 +242,7 @@ export function expandPermissionGroups(permissions: readonly PermissionId[], kno
 			continue;
 		}
 
-		const namespace = permission.slice(0, -2);
+		const namespace = permission.slice(0, -PERMISSION_GROUP_SUFFIX.length);
 		const matchingPermissions = [...knownPermissions].filter(knownPermission => knownPermission.startsWith(`${namespace}:`)).sort();
 		if (matchingPermissions.length === 0) {
 			throw new PermissionParseError(`Unknown permission group '${permission}'.`);
@@ -241,6 +252,30 @@ export function expandPermissionGroups(permissions: readonly PermissionId[], kno
 	}
 
 	return [...new Set(expandedPermissions)];
+}
+
+export function isPermissionGroup(permission: PermissionId): boolean {
+	return permission.endsWith(PERMISSION_GROUP_SUFFIX);
+}
+
+/** Wildcards match any selected permission in their namespace, not every permission in it. */
+export function matchesPermissionPattern(pattern: PermissionId, permissions: ReadonlySet<PermissionId>): boolean {
+	if (!isPermissionGroup(pattern)) {
+		return permissions.has(pattern);
+	}
+
+	const namespacePrefix = pattern.slice(0, -1);
+	return [...permissions].some(permission => permission.startsWith(namespacePrefix));
+}
+
+function createCompoundRiskRules(rulePrefix: string, capability: PermissionId, description: string): CompoundPermissionRuleDefinition[] {
+	// Rules are intentionally explicit per read permission so unrelated permissions in the same namespace do not trigger the warning.
+	return PRIVATE_DATA_READ_PERMISSIONS.map(permission => ({
+		id: `${rulePrefix}-with-${permission.replace(':', '-')}`,
+		permissions: [capability, permission],
+		severity: 'critical',
+		description,
+	}));
 }
 
 export function getPermissionDefinition(permission: PermissionId): PermissionDefinition | undefined {
