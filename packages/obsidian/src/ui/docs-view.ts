@@ -66,6 +66,7 @@ export class SafeJsDocsView extends ItemView {
 			['utils.file(value) / file(value)', 'Wrap a path or file descriptor with path fields and link creation.'],
 			['utils.tag(value) / tag(value)', 'Normalize an Obsidian tag and expose its nested levels.'],
 			['utils.formatBytes(value, options?) / formatBytes(...)', 'Format a byte count with decimal or binary units.'],
+			['utils.slugify(value, options?) / slugify(...)', 'Create a Unicode-aware slug. Options can set separator or disable lowercasing.'],
 		];
 		const list = section.createEl('ul');
 		for (const [usage, description] of utilities) {

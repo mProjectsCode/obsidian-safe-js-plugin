@@ -89,7 +89,7 @@ In Obsidian, run **Open API docs** to view the available permissions and `api.*`
 
 Current API groups include vault, metadata, workspace, editor, file manager, UI, output, storage, network, path, link, search, and YAML helpers. Every host operation goes through a permission-gated RPC method or host-side permission.
 
-The complete hardened `Temporal` API and permissionless utilities run entirely inside the worker. Normal scripts use `utils.today`, `utils.yesterday`, `utils.tomorrow`, `utils.now`, `utils.duration`, `utils.link`, `utils.file`, `utils.tag`, and `utils.formatBytes`; expression mode exposes the same functions directly. The date helpers return standard Temporal objects, and `duration` accepts ISO syntax, milliseconds, component objects, or shorthand such as `2w` and `1mo 3d`.
+The complete hardened `Temporal` API and permissionless utilities run entirely inside the worker. Normal scripts use `utils.today`, `utils.yesterday`, `utils.tomorrow`, `utils.now`, `utils.duration`, `utils.link`, `utils.file`, `utils.tag`, `utils.formatBytes`, and `utils.slugify`; expression mode exposes the same functions directly. The date helpers return standard Temporal objects, and `duration` accepts ISO syntax, milliseconds, component objects, or shorthand such as `2w` and `1mo 3d`.
 
 ## Plugin Integration
 

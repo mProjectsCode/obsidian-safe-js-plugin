@@ -1,5 +1,5 @@
 import { createDuration, createNow, createToday, createTomorrow, createYesterday, getTemporalApi } from 'packages/obsidian/src/worker/worker-date-utilities';
-import { createFileUtility, createLinkUtility, createTagUtility, formatByteCount } from 'packages/obsidian/src/worker/worker-value-utilities';
+import { createFileUtility, createLinkUtility, createTagUtility, formatByteCount, slugifyText } from 'packages/obsidian/src/worker/worker-value-utilities';
 import type { Harden } from 'ses';
 import type { Temporal } from 'temporal-polyfill/implementation';
 
@@ -13,6 +13,7 @@ interface UtilityFactories {
 	file(value: unknown): unknown;
 	tag(value: unknown): unknown;
 	formatBytes(value: unknown, options?: unknown): string;
+	slugify(value: unknown, options?: unknown): string;
 }
 
 interface WorkerUtilities {
@@ -50,6 +51,9 @@ export function createWorkerUtilities(hardenValue: Harden): WorkerUtilities {
 		formatBytes(value: unknown, options?: unknown): string {
 			return formatByteCount(value, options);
 		},
+		slugify(value: unknown, options?: unknown): string {
+			return slugifyText(value, options);
+		},
 	};
 
 	const utils = hardenValue(factories);
@@ -81,10 +85,13 @@ export function createWorkerUtilities(hardenValue: Harden): WorkerUtilities {
 	function formatBytes(value: unknown, options?: unknown): string {
 		return factories.formatBytes(value, options);
 	}
+	function slugify(value: unknown, options?: unknown): string {
+		return factories.slugify(value, options);
+	}
 
 	return {
 		temporal: hardenValue(getTemporalApi()),
 		utils,
-		expressionGlobals: hardenValue({ today, yesterday, tomorrow, now, duration, link, file, tag, formatBytes }),
+		expressionGlobals: hardenValue({ today, yesterday, tomorrow, now, duration, link, file, tag, formatBytes, slugify }),
 	};
 }

@@ -70,6 +70,19 @@ test('worker Obsidian value helpers normalize without host access', () => {
 	expect(utils.formatBytes(0.5)).toBe('1 B');
 });
 
+test('worker slugify helper creates Unicode-aware slugs', () => {
+	const { utils } = createWorkerUtilities(sesHarden);
+
+	expect(utils.slugify('  Crème brûlée & 東京  ')).toBe('creme-brulee-東京');
+	expect(utils.slugify('Project   Status', { separator: '_', lowercase: false })).toBe('Project_Status');
+	expect(utils.slugify('Καλημέρα κόσμε')).toBe('καλημέρα-κόσμε');
+	expect(utils.slugify('が ぎ')).toBe('が-ぎ');
+	expect(utils.slugify('---')).toBe('');
+	expect(() => utils.slugify(42)).toThrow('Slug value must be a string.');
+	expect(() => utils.slugify('value', { separator: '' })).toThrow('Slug separator must be a non-empty string');
+	expect(() => utils.slugify('value', { separator: 'x' })).toThrow('Slug separator must be a non-empty string');
+});
+
 test('expression utility aliases are direct globals and caller inputs can override them', async () => {
 	const { expressionGlobals, temporal } = createWorkerUtilities(sesHarden);
 	const compartment = new SesCompartment({
@@ -77,12 +90,16 @@ test('expression utility aliases are direct globals and caller inputs can overri
 		__options__: true,
 	});
 
-	const result = (await compartment.evaluate('(async () => ({ total: price * quantity, duration, formatted: formatBytes(1000) }))()')) as {
+	const result = (await compartment.evaluate(
+		'(async () => ({ total: price * quantity, duration, formatted: formatBytes(1000), slug: slugify("Hello world") }))()',
+	)) as {
 		total: number;
 		duration: string;
 		formatted: string;
+		slug: string;
 	};
 	expect(result.total).toBe(36);
 	expect(result.duration).toBe('caller override');
 	expect(result.formatted).toBe('1.0 kB');
+	expect(result.slug).toBe('hello-world');
 });

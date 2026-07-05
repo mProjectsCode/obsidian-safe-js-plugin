@@ -7,6 +7,10 @@ const DECIMAL_BYTE_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'] as const;
 const BINARY_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
 const DEFAULT_BYTE_DECIMALS = 1;
 const MAX_BYTE_DECIMALS = 10;
+const DEFAULT_SLUG_SEPARATOR = '-';
+const LATIN_COMBINING_MARKS_PATTERN = /(\p{Script=Latin})\p{M}+/gu;
+const NON_SLUG_CHARACTERS_PATTERN = /[^\p{L}\p{N}\p{M}]+/gu;
+const SLUG_SEPARATOR_CONTENT_PATTERN = /[\p{L}\p{N}\p{M}\s]/u;
 
 export function createLinkUtility(target: unknown, display: unknown, options: unknown, hardenValue: Harden): unknown {
 	let raw = typeof target === 'string' ? target.trim() : '';
@@ -81,6 +85,23 @@ export function formatByteCount(value: unknown, options: unknown): string {
 	const calculatedIndex = Math.floor(Math.log(Math.abs(bytes)) / Math.log(base));
 	const unitIndex = Math.max(0, Math.min(calculatedIndex, units.length - 1));
 	return `${(bytes / base ** unitIndex).toFixed(unitIndex === 0 ? 0 : decimals)} ${units[unitIndex]}`;
+}
+
+export function slugifyText(value: unknown, options: unknown): string {
+	if (typeof value !== 'string') throw new Error('Slug value must be a string.');
+
+	const config = readRecord(options);
+	const separator = config?.separator ?? DEFAULT_SLUG_SEPARATOR;
+	if (typeof separator !== 'string' || separator === '' || SLUG_SEPARATOR_CONTENT_PATTERN.test(separator)) {
+		throw new Error('Slug separator must be a non-empty string containing only non-whitespace punctuation or symbols.');
+	}
+
+	const normalized = value.normalize('NFKD').replace(LATIN_COMBINING_MARKS_PATTERN, '$1');
+	const cased = config?.lowercase === false ? normalized : normalized.toLowerCase();
+	let slug = cased.replace(NON_SLUG_CHARACTERS_PATTERN, separator);
+	if (slug.startsWith(separator)) slug = slug.slice(separator.length);
+	if (slug.endsWith(separator)) slug = slug.slice(0, -separator.length);
+	return slug.normalize('NFC');
 }
 
 function splitOnce(value: string, separator: string): [string, string | undefined] {
