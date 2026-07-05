@@ -1,7 +1,7 @@
 {
 	"id": "safe-js",
 	"name": "Safe JS",
-	"version": "0.2.0-canary.20260701T093235",
+	"version": "0.3.0",
 	"minAppVersion": "1.13.0",
 	"description": "Run JavaScript through sandboxed Web Workers and a limited RPC surface.",
 	"author": "Moritz Jung",
