@@ -8,13 +8,7 @@ export type PermissionSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type SafeJsApprovalMode = 'prompt' | 'skip-missing';
 export type SafeJsExecutionFailureStatus =
-	| 'permission-denied'
-	| 'policy-error'
-	| 'parse-error'
-	| 'validation-error'
-	| 'runtime-error'
-	| 'timeout'
-	| 'cancelled';
+	'permission-denied' | 'policy-error' | 'parse-error' | 'validation-error' | 'runtime-error' | 'timeout' | 'cancelled';
 export type SafeJsOutputFormat = 'text' | 'markdown' | 'html';
 export type SandboxParamStyle = 'object' | 'path' | 'optionalPath' | 'args';
 
