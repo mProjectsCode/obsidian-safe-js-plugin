@@ -1,5 +1,4 @@
 import type { App, Plugin } from 'obsidian';
-import { SAFE_JS_PLUGIN_ID, getSafeJsApi, getSafeJsPlugin } from '@lemons_dev/obsidian-safe-js-api';
 import type {
 	PermissionDefinition,
 	SafeJsCallerApi,
@@ -8,6 +7,7 @@ import type {
 	SandboxFunctionDefinition,
 	SandboxGlobalDefinition,
 } from '@lemons_dev/obsidian-safe-js-api';
+import { SAFE_JS_PLUGIN_ID, getSafeJsApi, getSafeJsPlugin } from '@lemons_dev/obsidian-safe-js-api';
 import type { WorkerRpcBinding } from '@lemons_dev/obsidian-safe-js-api/internal';
 
 declare const app: App;

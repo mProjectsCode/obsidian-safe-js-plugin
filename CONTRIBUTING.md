@@ -13,7 +13,7 @@ This project uses Bun, Vite, TypeScript, and ESLint. First install the dependenc
 - `bun run lint` runs ESLint.
 - `bun run test` runs the Bun test suite.
 - `bun run check` runs formatting checks, type checks, linting, and tests.
-- `bun run check:fix` runs the above while trying to fix formatting and fixable lint errors.
+- `bun run format` and `bun run lint:fix` fix formatting and fixable lint errors; run `bun run check` afterward.
 
 Run `bun run check` before opening a pull request when possible.
 

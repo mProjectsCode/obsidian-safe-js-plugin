@@ -60,7 +60,9 @@ export function createNow(timeZone?: Temporal.TimeZoneLike): Temporal.ZonedDateT
 
 export function createDuration(value: unknown): Temporal.Duration {
 	if (typeof value === 'number') {
-		if (!Number.isFinite(value)) throw new Error('Duration must be a finite number of milliseconds.');
+		if (!Number.isFinite(value)) {
+			throw new Error('Duration must be a finite number of milliseconds.');
+		}
 		return Temporal.Duration.from({ milliseconds: value });
 	}
 

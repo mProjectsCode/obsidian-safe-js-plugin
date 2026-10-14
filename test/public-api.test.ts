@@ -1,6 +1,6 @@
+import type { SafeJsExecutionOptions, SafeJsExecutionResult, SafeJsExpressionOptions, SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
 import { expect, test } from 'bun:test';
 import type { Plugin } from 'obsidian';
-import type { SafeJsExecutionOptions, SafeJsExecutionResult, SafeJsExpressionOptions, SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
 import type { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import { DefaultSafeJsPublicApi } from 'packages/obsidian/src/public-api/safe-js-public-api';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';

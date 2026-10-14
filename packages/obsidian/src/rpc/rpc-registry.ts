@@ -452,7 +452,9 @@ function isValidatorList(value: BuiltInValidatorOptions | readonly SafeJsValidat
 function createUnregisterCallback(unregister: () => void): () => void {
 	let registered = true;
 	return (): void => {
-		if (!registered) return;
+		if (!registered) {
+			return;
+		}
 		unregister();
 		registered = false;
 	};

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { isSafeVaultPath, validateVaultPath, type VaultPathValidationOptions } from 'packages/obsidian/src/rpc/path-validation';
+import type { VaultPathValidationOptions } from 'packages/obsidian/src/rpc/path-validation';
+import { isSafeVaultPath, validateVaultPath } from 'packages/obsidian/src/rpc/path-validation';
 
 const validatePathOptions: VaultPathValidationOptions = {
 	configDir: '.obsidian',

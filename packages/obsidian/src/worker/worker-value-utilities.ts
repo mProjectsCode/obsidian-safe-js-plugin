@@ -19,12 +19,16 @@ export function createLinkUtility(target: unknown, display: unknown, options: un
 		embed = true;
 		raw = raw.slice(1);
 	}
-	if (raw.startsWith('[[') && raw.endsWith(']]')) raw = raw.slice(2, -2);
+	if (raw.startsWith('[[') && raw.endsWith(']]')) {
+		raw = raw.slice(2, -2);
+	}
 
 	const [destination, parsedDisplay] = splitOnce(raw, '|');
 	const [path, subpath] = splitSubpath(destination);
 	const resolvedDisplay = typeof display === 'string' ? display : parsedDisplay;
-	if (path.trim() === '') throw new Error('Link target must not be empty.');
+	if (path.trim() === '') {
+		throw new Error('Link target must not be empty.');
+	}
 
 	const markdown = `${embed ? '!' : ''}[[${path}${subpath}${resolvedDisplay === undefined ? '' : `|${resolvedDisplay}`}]]`;
 	return hardenValue({
@@ -42,7 +46,9 @@ export function createLinkUtility(target: unknown, display: unknown, options: un
 export function createFileUtility(value: unknown, hardenValue: Harden): unknown {
 	const record = readRecord(value);
 	const path = typeof value === 'string' ? value.trim() : typeof record?.path === 'string' ? record.path : '';
-	if (path === '') throw new Error('File value requires a vault-relative path.');
+	if (path === '') {
+		throw new Error('File value requires a vault-relative path.');
+	}
 
 	const name = path.split('/').at(-1) ?? path;
 	const dot = name.lastIndexOf('.');
@@ -50,9 +56,13 @@ export function createFileUtility(value: unknown, hardenValue: Harden): unknown 
 	const basename = extension === '' ? name : name.slice(0, -(extension.length + 1));
 	const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 	const descriptor: Record<string, JsonValue> = { path, name, basename, extension, parent };
-	if (record?.type === 'file' || record?.type === 'folder') descriptor.type = record.type;
+	if (record?.type === 'file' || record?.type === 'folder') {
+		descriptor.type = record.type;
+	}
 	const stat = readRecord(record?.stat);
-	if (stat !== undefined) descriptor.stat = stat as JsonValue;
+	if (stat !== undefined) {
+		descriptor.stat = stat as JsonValue;
+	}
 
 	return hardenValue({
 		kind: 'file',
@@ -66,16 +76,22 @@ export function createFileUtility(value: unknown, hardenValue: Harden): unknown 
 }
 
 export function createTagUtility(input: unknown, hardenValue: Harden): unknown {
-	if (typeof input !== 'string') throw new Error('Tag value must be a string.');
+	if (typeof input !== 'string') {
+		throw new Error('Tag value must be a string.');
+	}
 	const name = input.trim().replace(/^#+/u, '').replace(/\s+/gu, '-');
-	if (name === '') throw new Error('Tag value must not be empty.');
+	if (name === '') {
+		throw new Error('Tag value must not be empty.');
+	}
 	const text = `#${name}`;
 	return hardenValue({ kind: 'tag', name, levels: name.split('/'), toJSON: (): JsonValue => text, toString: (): string => text });
 }
 
 export function formatByteCount(value: unknown, options: unknown): string {
 	const bytes = requireFiniteNumber(value, 'Byte count');
-	if (bytes === 0) return '0 B';
+	if (bytes === 0) {
+		return '0 B';
+	}
 
 	const config = readRecord(options);
 	const binary = config?.binary === true;
@@ -88,7 +104,9 @@ export function formatByteCount(value: unknown, options: unknown): string {
 }
 
 export function slugifyText(value: unknown, options: unknown): string {
-	if (typeof value !== 'string') throw new Error('Slug value must be a string.');
+	if (typeof value !== 'string') {
+		throw new Error('Slug value must be a string.');
+	}
 
 	const config = readRecord(options);
 	const separator = config?.separator ?? DEFAULT_SLUG_SEPARATOR;
@@ -99,8 +117,12 @@ export function slugifyText(value: unknown, options: unknown): string {
 	const normalized = value.normalize('NFKD').replace(LATIN_COMBINING_MARKS_PATTERN, '$1');
 	const cased = config?.lowercase === false ? normalized : normalized.toLowerCase();
 	let slug = cased.replace(NON_SLUG_CHARACTERS_PATTERN, separator);
-	if (slug.startsWith(separator)) slug = slug.slice(separator.length);
-	if (slug.endsWith(separator)) slug = slug.slice(0, -separator.length);
+	if (slug.startsWith(separator)) {
+		slug = slug.slice(separator.length);
+	}
+	if (slug.endsWith(separator)) {
+		slug = slug.slice(0, -separator.length);
+	}
 	return slug.normalize('NFC');
 }
 
@@ -122,6 +144,8 @@ function readRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function requireFiniteNumber(value: unknown, label: string): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} must be a finite number.`);
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		throw new Error(`${label} must be a finite number.`);
+	}
 	return value;
 }

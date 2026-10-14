@@ -1,7 +1,7 @@
-import { expect, test } from 'bun:test';
 import type { SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
-import { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
+import { expect, test } from 'bun:test';
 import type { PermissionPrompt, PermissionPromptRequest } from 'packages/obsidian/src/execution/execution-service';
+import { SafeJsExecutionService } from 'packages/obsidian/src/execution/execution-service';
 import type { HostWorkerMessage, WorkerClient, WorkerClientMessage, WorkerFactory } from 'packages/obsidian/src/execution/worker-client';
 import { MemoryPermissionApprovalStore } from 'packages/obsidian/src/permissions/approval-store';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
@@ -490,7 +490,7 @@ test('expression blocks only inherit low-risk permissions from the initial regis
 
 test('terminates workers on timeout', async () => {
 	const workerFactory = new HangingWorkerFactory();
-	const { service } = createService({ promptApproved: true, workerFactory: workerFactory as unknown as FakeWorkerFactory });
+	const { service } = createService({ promptApproved: true, workerFactory: workerFactory });
 
 	const result = await service.execute(
 		`// @permission test:call
@@ -540,7 +540,7 @@ return await api.test.echo({ value: "x" });`,
 
 test('cancelAll resolves active executions as cancelled', async () => {
 	const workerFactory = new HangingWorkerFactory();
-	const { service } = createService({ promptApproved: true, workerFactory: workerFactory as unknown as FakeWorkerFactory });
+	const { service } = createService({ promptApproved: true, workerFactory: workerFactory });
 
 	const resultPromise = service.execute(`// @permission test:call
 return await api.test.echo({ value: "x" });`);

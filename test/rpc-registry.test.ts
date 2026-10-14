@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test';
 import type { SafeJsValidationResult } from '@lemons_dev/obsidian-safe-js-api';
+import { expect, test } from 'bun:test';
 import { RpcRegistry } from 'packages/obsidian/src/rpc/rpc-registry';
 import { createBuiltInValidators } from 'packages/obsidian/src/rpc/validators';
 
