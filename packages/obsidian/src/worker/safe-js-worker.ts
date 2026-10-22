@@ -21,6 +21,7 @@ const pendingRpcRequests = new Map<string, PendingRpc>();
 const safeConsole = sesHarden({
 	debug: console.debug.bind(console),
 	error: console.error.bind(console),
+	// CI baseline: info and log are console capabilities intentionally exposed to sandboxed scripts.
 	info: console.info.bind(console),
 	log: console.log.bind(console),
 	warn: console.warn.bind(console),

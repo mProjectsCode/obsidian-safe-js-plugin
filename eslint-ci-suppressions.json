@@ -1,0 +1,7 @@
+{
+	"packages/obsidian/src/worker/safe-js-worker.ts": {
+		"obsidianmd/rule-custom-message": {
+			"count": 2
+		}
+	}
+}

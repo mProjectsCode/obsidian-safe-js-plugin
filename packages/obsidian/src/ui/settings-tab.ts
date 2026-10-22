@@ -57,13 +57,4 @@ export class SafeJsSettingTab extends PluginSettingTab {
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		await this.runtimeSettingsSection.setControlValue(key, value);
 	}
-
-	display(): void {
-		// intentional fallback for when a user somehow manages to circumvent the minimum Obsidian version check and gets here with an unsupported version
-		const { containerEl } = this;
-		containerEl.empty();
-		containerEl.createEl('p', {
-			text: 'Safe JS settings require Obsidian 1.13.0 or newer. This app appears to be running an older version.',
-		});
-	}
 }
