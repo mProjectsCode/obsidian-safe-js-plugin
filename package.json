@@ -30,7 +30,7 @@
 	"license": "GPL-3.0",
 	"devDependencies": {
 		"@happy-dom/global-registrator": "^20.9.0",
-		"@lemons_dev/lemons-obsidian-plugin-automation": "https://github.com/mProjectsCode/lemons-obsidian-plugin-helpers/releases/download/automation-v0.2.6/automation-v0.2.6.tgz",
+		"@lemons_dev/lemons-obsidian-plugin-automation": "https://github.com/mProjectsCode/lemons-obsidian-plugin-helpers/releases/download/automation-v0.2.8/automation-v0.2.8.tgz",
 		"@types/bun": "1.3.14",
 		"eslint": "9.39.4",
 		"obsidian": "latest",
