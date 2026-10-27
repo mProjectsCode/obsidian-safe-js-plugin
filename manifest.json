@@ -1,7 +1,7 @@
 {
 	"id": "safe-js",
 	"name": "Safe JS",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"minAppVersion": "1.13.0",
 	"description": "Run JavaScript through sandboxed Web Workers and a limited RPC surface.",
 	"author": "Moritz Jung",

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-safe-js-plugin",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"description": "Run JavaScript in Obsidian through sandboxed Web Workers and a limited RPC surface.",
 	"main": "main.js",
 	"scripts": {

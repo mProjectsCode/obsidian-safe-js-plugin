@@ -6,3 +6,5 @@ Misc
 
 - Various internal improvements and dependency updates
 - Fixed Obsidian review findings
+
+# 0.3.2
